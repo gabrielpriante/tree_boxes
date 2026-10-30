@@ -159,6 +159,42 @@ thresholds themselves remain 0.50, 0.75 and 1.00.
 Any failure stops the run with a clear error, without writing outputs. The file is never rewritten
 automatically. A safe Excel workflow is in `human_review/README.md`.
 
+## Accuracy against a COMPLETE human reference
+
+Reference boxes are imported from Make Sense exports with `import_reference.py`. The import requires the Pascal
+VOC and CSV exports to agree. Differences of 1 px or less on `x_max`/`y_max` need an explicit `--use voc|csv`.
+The importer never rounds, never replaces existing rows and never touches `reference_status.csv`.
+
+Once an image is marked `COMPLETE`, every evaluation run matches each trial to the reference on its own. It uses
+the same exact-IoU, one-to-one, maximum-cardinality matching as the consistency analysis, at 0.50, 0.75 and 1.00.
+`evaluation_accuracy.py` writes:
+
+* `accuracy_vs_reference.csv`: per trial and threshold, TP, FP, FN, precision, recall, F1 and the mean IoU of TPs.
+* `accuracy_summary.csv`: the mean, sample SD, min and max of each metric across trials, plus pooled values.
+* `reference_detection_frequency.csv`: per reference tree, the trials that found it and the matched detection ids.
+  It also gives the mean IoU, the area ratio (Claude/human) and the centre offset when found, and the nearest box
+  in each trial that missed it.
+* `prediction_outcomes.csv`: per predicted box, TP or FP with its matched reference. Each FP gets a type:
+  * `no_reference_overlap`;
+  * `localization_below_threshold`, where the box overlaps a tree but the IoU is too low;
+  * `reference_matched_by_other_detection`.
+  Each row also carries the box's IoU 0.50 group, review unit and human label, so error analysis follows
+  detection ids rather than group names.
+* `accuracy_report.md` and figures F–J, under `figures/<experiment>/<image>/`:
+  * F: precision, recall and F1 by threshold;
+  * G: per-trial TP/FP/FN;
+  * H: how often each reference tree was found;
+  * I: the reference against all trials' boxes;
+  * J: crops of the error cases.
+
+`human_review/reference_boxes.csv` also produces `review/human_reference_<image>.jpg`, which shows the reference
+boxes only.
+
+Against human whole-pixel boxes, IoU = 1.00 is effectively unreachable: Claude's 0–1000 grid has a step of about
+8 px. At that threshold the evaluation reports exact coordinate agreement, which is not a measure of detection
+quality. The report also measures how much of each matched Claude box lies inside its human box. If one box
+contains the other, IoU equals their area ratio, which separates box-extent differences from real misplacement.
+
 ## Adding other models
 
 `evaluation_core` only sees `DetectionSet` objects: boxes in original-image pixels, plus image id, SHA-256,
