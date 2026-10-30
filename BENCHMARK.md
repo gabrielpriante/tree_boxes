@@ -85,11 +85,12 @@ Controlled vocabulary, checked on every load (any other value is an error):
 `UNKNOWN` means not yet established. `NOT_APPLICABLE` means the field does not apply.
 
 * `altitude_m` is the DJI XMP `RelativeAltitude` (metres above the takeoff point, not above the canopy).
-* The October 24 altitude series has *proposed* labels `week = NOT_APPLICABLE` and
-  `condition = ALTITUDE_TEST`, still listed in `needs_review` for confirmation. They do not imply
-  intervention BEFORE/AFTER status.
+* The October 24 altitude series uses `week = NOT_APPLICABLE` and `condition = ALTITUDE_TEST`
+  (confirmed 2026-10-30). They do not imply intervention BEFORE/AFTER status.
 * Week 1 keeps its folder labels (`MORNING_START` / `AFTERNOON_END`) until the mapping is confirmed.
 * `coverage_scope` is `UNKNOWN` everywhere; it needs a visual check and is never inferred from altitude.
+  It does not enter the prompt, so `UNKNOWN` or a pending `coverage_scope` review never blocks a run
+  (nor does a pending `capture_geometry` review).
 * **Run gate:** `site`, `week` and `condition` are inserted into the prompt. The runner won't send an image
   while any of them is `UNKNOWN` or still listed in `needs_review`. `NOT_APPLICABLE` is a valid value and
   needs no override. `--allow-unknown-metadata` bypasses the gate. Editing these fields after trials have
@@ -111,6 +112,12 @@ python benchmark_runner.py --manifest manifests/manifest.csv --image-ids W03_BEF
 # Continue after an interruption, budget stop or failure
 python benchmark_runner.py ... --execute --resume
 
+# Low-altitude pilot: one image
+python benchmark_runner.py --manifest manifests/manifest.csv --image-ids LA_PT-R1_27m --runs 10 --max-usd 5 --experiment-id lowalt_pilot_ptr1_27m_v1 --dry-run
+
+# Two lowest-altitude images, alternating (round-robin)
+python benchmark_runner.py --manifest manifests/manifest.csv --image-ids LA_PT-R1_27m,LA_PT-02_64m --runs 10 --max-usd 5 --experiment-id lowalt_pair_rr_v1 --round-robin --dry-run
+
 # October 24 altitude series (all ten low-altitude images)
 python benchmark_runner.py --manifest manifests/manifest.csv --collection low_altitude --runs 10 --max-usd 5 --experiment-id altitude_oct24_v1 --dry-run
 ```
@@ -118,7 +125,10 @@ python benchmark_runner.py --manifest manifests/manifest.csv --collection low_al
 `--mock` runs write to `benchmark_results_mock/` (git-ignored) with their own ledger. The runner refuses
 to write mock results inside `benchmark_results/`.
 
-Images run in manifest order; trials 1–10 of one image complete before the next image starts.
+By default images run in manifest order; trials 1–10 of one image complete before the next image starts.
+With `--round-robin` the same trials run by trial number, cycling through the selected images in manifest
+order (A1, B1, A2, B2, …). Only the order changes: folders, records, budget checks, ledger, retries and
+the pause rule are identical, and `--resume` continues the cycle from the first outstanding trial.
 Requests are strictly sequential. Each trial is a new single-message request: no conversation
 history or earlier detections are sent.
 
