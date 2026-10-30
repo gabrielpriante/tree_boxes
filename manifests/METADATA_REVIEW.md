@@ -14,7 +14,7 @@ Vocabulary: `UNKNOWN` = not yet established. `NOT_APPLICABLE` = does not apply.
 
 ## Priority 1: the ten October 24 altitude-series images
 
-| image_id | rel. altitude (m) | week (proposed) | condition (proposed) | coverage_scope | other |
+| image_id | rel. altitude (m) | week | condition | coverage_scope | other |
 |---|---|---|---|---|---|
 | LA_PT-02_64m | 64.3 | NOT_APPLICABLE | ALTITUDE_TEST | UNKNOWN | |
 | LA_PT-02_66m | 66.2 | NOT_APPLICABLE | ALTITUDE_TEST | UNKNOWN | |
@@ -32,13 +32,12 @@ altitude (metres above the takeoff point), not height above the canopy.
 
 Decisions needed:
 
-1. **week / condition.** Accept `NOT_APPLICABLE` / `ALTITUDE_TEST` for all ten, or supply
-   other labels. These strings are inserted into the prompt as image identifiers
-   (`Collection week: {NOT_APPLICABLE}`, `Condition: {ALTITUDE_TEST}`). They state nothing
-   about intervention timing.
+1. **week / condition: confirmed 2026-10-30** as `NOT_APPLICABLE` / `ALTITUDE_TEST` for all ten.
+   These strings are inserted into the prompt as image identifiers and state nothing about
+   intervention timing.
 2. **coverage_scope.** For each image, does the frame show the full site (`FULL_SITE`) or only
    part of it (`PARTIAL_SITE`)? This needs a visual check against the site boundary. It can't be
-   derived from altitude or metadata.
+   derived from altitude or metadata. Not required before running; it matters only for analysis.
 3. **The two rotated frames.** Both have nadir gimbal pitch (−89.9° / −90.0°), so neither is
    oblique. Their gimbal yaw differs by about 90° from the rest of their site's series:
    * `LA_PT-R1_30m_angled`: yaw +153.7° vs −116.4° for the other PT-R1 frames. The filename's
