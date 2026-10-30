@@ -1,0 +1,405 @@
+"""
+Offline tests for the evaluation pipeline: synthetic boxes with known answers, plus end-to-end runs
+on mock benchmark output. No network access and no API charges.
+
+    python -m pytest tests -q
+"""
+
+import csv
+import itertools
+import json
+import random
+import shutil
+import sys
+import tempfile
+import unittest
+from fractions import Fraction
+from pathlib import Path
+
+from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import benchmark_runner as br  # noqa: E402
+import evaluate_consistency as ev  # noqa: E402
+import evaluation_core as ec  # noqa: E402
+from model_adapters import MockAdapter  # noqa: E402
+
+REPO = Path(__file__).resolve().parents[1]
+HALF, THREE_Q, ONE = Fraction(1, 2), Fraction(3, 4), Fraction(1)
+
+
+def quiet(*_a, **_k):
+    pass
+
+
+def strip(x0, x1, y0=0, y1=10):
+    """Boxes of equal height: IoU reduces to interval overlap / union."""
+    return ec.box_from_pixels([x0, y0, x1, y1])
+
+
+def dset(trial, boxes, image="IMG", sha="s", w=1000, h=1000):
+    tag = "ref" if trial is None else f"t{trial:02d}"
+    dets = tuple(ec.Detection(f"{image}:{tag}:T{i + 1:03d}", f"T{i + 1:03d}", b) for i, b in enumerate(boxes))
+    return ec.DetectionSet("test", image, sha, w, h, trial, dets)
+
+
+class TestIoU(unittest.TestCase):
+    def test_zero_when_disjoint_or_touching(self):
+        self.assertEqual(ec.iou(strip(0, 10), strip(20, 30)), 0)
+        self.assertEqual(ec.iou(strip(0, 10), strip(10, 20)), 0)  # shared edge only
+
+    def test_partial_overlap(self):
+        self.assertEqual(ec.iou(strip(0, 10), strip(5, 15)), Fraction(1, 3))
+
+    def test_exactly_half(self):
+        a, b = strip(0, 30), strip(10, 40)
+        self.assertEqual(ec.iou(a, b), HALF)
+        self.assertEqual(len(ec.match_boxes([a], [b], HALF)), 1)   # threshold is inclusive
+        self.assertEqual(ec.match_boxes([a], [b], THREE_Q), [])
+
+    def test_exactly_three_quarters(self):
+        a, b = strip(0, 100), strip(0, 75)
+        self.assertEqual(ec.iou(a, b), THREE_Q)
+        self.assertEqual(len(ec.match_boxes([a], [b], THREE_Q)), 1)
+        self.assertEqual(ec.match_boxes([a], [b], ONE), [])
+
+    def test_one_requires_identical_geometry(self):
+        a = ec.box_from_normalized([100, 100, 200, 200], 8192, 6144)
+        same = ec.box_from_normalized([100, 100, 200, 200], 8192, 6144)
+        off = ec.box_from_normalized([100, 100, 200, 201], 8192, 6144)
+        self.assertEqual(ec.iou(a, same), 1)
+        self.assertGreater(ec.iou(a, off), Fraction(98, 100))
+        self.assertEqual(len(ec.match_boxes([a], [same], ONE)), 1)
+        self.assertEqual(ec.match_boxes([a], [off], ONE), [])
+
+    def test_exact_arithmetic_on_real_image_grid(self):
+        # 0-1000 -> 8192x6144 pixels gives non-integer pixel coordinates; IoU stays exact.
+        a = ec.box_from_normalized([0, 0, 400, 300], 8192, 6144)
+        b = ec.box_from_normalized([0, 0, 300, 300], 8192, 6144)
+        self.assertIsInstance(ec.iou(a, b), Fraction)
+        self.assertEqual(ec.iou(a, b), THREE_Q)
+
+    def test_normalized_conversion_rejects_non_integers_and_degenerate_boxes(self):
+        with self.assertRaises(ValueError):
+            ec.box_from_normalized([1.5, 0, 10, 10], 100, 100)
+        with self.assertRaises(ValueError):
+            ec.box_from_normalized([10, 0, 10, 10], 100, 100)
+
+
+class TestMatching(unittest.TestCase):
+    def test_maximizes_number_of_matches_not_greedy(self):
+        a1, a2 = strip(1, 11), strip(-3, 7)
+        b1, b2 = strip(0, 10), strip(4, 14)
+        # Greedy best-IoU-first would take a1-b1 (0.82) and leave a2 unmatched.
+        self.assertGreater(ec.iou(a1, b1), ec.iou(a1, b2))
+        pairs = ec.match_boxes([a1, a2], [b1, b2], HALF)
+        self.assertEqual([(i, j) for i, j, _ in pairs], [(0, 1), (1, 0)])
+
+    def test_ties_in_count_broken_by_total_iou(self):
+        a = strip(0, 10)
+        pairs = ec.match_boxes([a], [strip(3, 13), strip(1, 11)], HALF)
+        self.assertEqual([(i, j) for i, j, _ in pairs], [(0, 1)])
+
+    def test_one_to_one_and_optimal_against_brute_force(self):
+        rng = random.Random(7)
+        for _ in range(150):
+            def boxes(n):
+                out = []
+                for _ in range(n):
+                    x, y = rng.randint(0, 30), rng.randint(0, 30)
+                    out.append(ec.box_from_pixels([x, y, x + rng.randint(4, 14), y + rng.randint(4, 14)]))
+                return out
+            A, B = boxes(rng.randint(0, 5)), boxes(rng.randint(0, 5))
+            for t in (HALF, THREE_Q):
+                got = ec.match_boxes(A, B, t)
+                self.assertEqual(len({i for i, _, _ in got}), len(got))
+                self.assertEqual(len({j for _, j, _ in got}), len(got))
+                best = (0, Fraction(0))
+                for k in range(min(len(A), len(B)), 0, -1):
+                    for ia in itertools.combinations(range(len(A)), k):
+                        for jb in itertools.permutations(range(len(B)), k):
+                            vals = [ec.iou(A[i], B[j]) for i, j in zip(ia, jb)]
+                            if all(v > 0 and v >= t for v in vals):
+                                best = max(best, (k, sum(vals)))
+                    if best[0]:
+                        break
+                self.assertEqual(len(got), best[0])
+                self.assertEqual(sum((v for _, _, v in got), Fraction(0)), best[1])
+
+    def test_duplicate_detections_match_once(self):
+        r = ec.compare_sets(dset(1, [strip(0, 10), strip(0, 10)]), dset(2, [strip(0, 10)]), HALF)
+        self.assertEqual((r["matched"], r["unmatched_a"], r["unmatched_b"]), (1, 1, 0))
+        self.assertEqual(r["agreement"], Fraction(2, 3))
+
+    def test_unmatched_detections_counted(self):
+        r = ec.compare_sets(dset(1, [strip(0, 10), strip(50, 60)]), dset(2, [strip(0, 10), strip(100, 110), strip(200, 210)]), HALF)
+        self.assertEqual((r["matched"], r["unmatched_a"], r["unmatched_b"]), (1, 1, 2))
+        self.assertEqual(r["agreement"], Fraction(2, 5))
+        self.assertEqual(r["mean_iou"], 1.0)
+
+    def test_empty_sets(self):
+        both = ec.compare_sets(dset(1, []), dset(2, []), HALF)
+        self.assertIsNone(both["agreement"])
+        self.assertEqual(both["matched"], 0)
+        one = ec.compare_sets(dset(1, []), dset(2, [strip(0, 10)] * 3), HALF)
+        self.assertEqual((one["agreement"], one["unmatched_b"]), (0, 3))
+        self.assertIsNone(one["mean_iou"])
+        s = ec.summarize_pairs([both, one])
+        self.assertEqual((s["n_pairs"], s["n_pairs_undefined"], s["agreement_mean"]), (2, 1, 0.0))
+
+    def test_pairwise_count_is_n_choose_two(self):
+        sets = [dset(t, [strip(0, 10)]) for t in range(1, 11)]
+        self.assertEqual(len(ec.pairwise_trials(sets, HALF)), 45)
+
+
+class TestPersistence(unittest.TestCase):
+    def groups(self, sets, t=HALF):
+        return ec.persistence_groups(sets, ec.pairwise_trials(sets, t))
+
+    def test_object_found_in_every_trial(self):
+        sets = [dset(t, [strip(0, 10), strip(100, 110)] if t == 1 else [strip(0, 10)]) for t in range(1, 4)]
+        gs = self.groups(sets)
+        self.assertEqual([(g.group_id, g.status, g.n_trials) for g in gs],
+                         [("G01", "CONSISTENT", 3), ("G02", "CONSISTENT", 1)])
+        self.assertEqual(ec.persistence_bin(3, 3), "all 3")
+
+    def test_bins_for_ten_trials(self):
+        self.assertEqual([b[0] for b in ec.persistence_bins(10)], ["all 10", "8-9", "5-7", "1-4"])
+        self.assertEqual([ec.persistence_bin(n, 10) for n in (10, 9, 8, 7, 5, 4, 1)],
+                         ["all 10", "8-9", "8-9", "5-7", "5-7", "1-4", "1-4"])
+
+    def test_chain_is_not_merged_transitively(self):
+        sets = [dset(1, [strip(0, 10)]), dset(2, [strip(3, 13)]), dset(3, [strip(6, 16)])]
+        self.assertGreaterEqual(ec.iou(strip(0, 10), strip(3, 13)), HALF)
+        self.assertLess(ec.iou(strip(0, 10), strip(6, 16)), HALF)
+        gs = self.groups(sets)
+        self.assertEqual(len(gs), 1)
+        self.assertEqual(gs[0].status, "AMBIGUOUS")
+        self.assertEqual(len(gs[0].missing_links), 1)
+        self.assertEqual(gs[0].group_id, "A01")
+
+    def test_two_boxes_from_one_trial_flagged(self):
+        sets = [dset(1, [strip(0, 10), strip(500, 510)]), dset(2, [strip(0, 10)]), dset(3, [strip(0, 10)])]
+        uid = {(s.trial, i): d.uid for s in sets for i, d in enumerate(s.detections)}
+        # Hand-built matches: t1 box 0 ~ t2, t2 ~ t3, t3 ~ t1 box 1 (as a mismatched assignment could produce)
+        pairs = [{"pairs": [(uid[(1, 0)], uid[(2, 0)], ONE)]}, {"pairs": [(uid[(2, 0)], uid[(3, 0)], ONE)]},
+                 {"pairs": [(uid[(1, 1)], uid[(3, 0)], ONE)]}]
+        gs = ec.persistence_groups(sets, pairs)
+        self.assertEqual(len(gs), 1)
+        self.assertEqual(gs[0].status, "AMBIGUOUS")
+        self.assertEqual(gs[0].duplicate_trials, [1])
+
+    def test_object_never_counted_twice_in_a_trial(self):
+        sets = [dset(t, [strip(0, 10), strip(1, 11)]) for t in range(1, 5)]
+        for g in self.groups(sets):
+            if g.status == "CONSISTENT":
+                self.assertEqual(len(g.members), g.n_trials)
+
+    def test_match_frequency(self):
+        sets = [dset(1, [strip(0, 10), strip(100, 110)]), dset(2, [strip(0, 10)]), dset(3, [strip(0, 10)])]
+        freq = ec.detection_match_frequency(sets, ec.pairwise_trials(sets, HALF))
+        self.assertEqual(freq["IMG:t01:T001"], 2)
+        self.assertEqual(freq["IMG:t01:T002"], 0)
+
+
+class TestSeparationOfMetrics(unittest.TestCase):
+    def test_cross_image_comparison_refused(self):
+        a, b = dset(1, [strip(0, 10)], image="LA_PT-R1_27m", sha="x"), dset(1, [strip(0, 10)], image="LA_PT-R1_28m", sha="y")
+        with self.assertRaises(ec.CrossImageComparisonError):
+            ec.compare_sets(a, b, HALF)
+        with self.assertRaises(NotImplementedError):
+            ec.compare_sets(a, b, HALF, alignment="homography")
+        with self.assertRaises(ec.CrossImageComparisonError):
+            ec.pairwise_trials([a, dset(2, [strip(0, 10)], image="LA_PT-R1_28m", sha="y")], HALF)
+        with self.assertRaises(ec.CrossImageComparisonError):
+            ec.compare_sets(a, dset(2, [strip(0, 10)], image="LA_PT-R1_27m", sha="x", w=500), HALF)
+
+    def test_accuracy_requires_complete_reference(self):
+        pred, ref = dset(1, [strip(0, 10), strip(50, 60)]), dset(None, [strip(0, 10), strip(100, 110)])
+        for status in ("NONE", "PARTIAL", ""):
+            with self.assertRaises(ec.ReferenceNotAvailableError):
+                ec.accuracy_vs_reference(pred, ref, status, HALF)
+        a = ec.accuracy_vs_reference(pred, ref, "COMPLETE", HALF)
+        self.assertEqual((a["true_positives"], a["false_positives"], a["false_negatives"]), (1, 1, 1))
+        self.assertEqual((a["precision"], a["recall"], a["f1"]), (0.5, 0.5, 0.5))
+
+
+# ------------------------------------------------------------------ end to end on mock benchmark output
+
+class EvaluationRun(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        rows = []
+        for i, (image_id, site) in enumerate([("IMG_A", "PT-02"), ("IMG_B", "PT-R1")]):
+            path = self.tmp / "imgs" / f"{image_id}.jpg"
+            path.parent.mkdir(exist_ok=True)
+            Image.new("RGB", (320, 240), (40 * i, 120, 60)).save(path, quality=90)
+            rows.append({"image_id": image_id, "image_path": f"imgs/{image_id}.jpg", "site": site, "week": "WEEK 3",
+                         "condition": "BEFORE", "altitude_m": "95.0", "coverage_scope": "UNKNOWN", "collection": "standard"})
+        self.manifest = self.tmp / "manifest.csv"
+        with self.manifest.open("w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0]))
+            w.writeheader()
+            w.writerows(rows)
+        self.results = self.tmp / "results"
+        br.run_benchmark(br.load_manifest(self.manifest, self.tmp), MockAdapter(), self.results, "EXP", runs=4,
+                         max_usd=100, dry_run=False, manifest_path=self.manifest, ledger_path=self.tmp / "l.jsonl", log=quiet)
+        self.review = self.tmp / "human_review"
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def evaluate(self, out="eval", **kw):
+        kw.setdefault("figures", False)
+        return ev.run(self.results, None, self.tmp / out, self.review, self.manifest, self.tmp, log=quiet, **kw)
+
+    def read(self, name, out="eval"):
+        with (self.tmp / out / name).open(newline="", encoding="utf-8") as f:
+            return list(csv.DictReader(f))
+
+    def test_outputs_and_pair_counts(self):
+        res = self.evaluate()
+        for name in ("pairwise_iou.csv", "iou_summary.csv", "detection_persistence.csv", "manual_review_template.csv",
+                     "count_consistency.csv", "evaluation_report.md", "evaluation_config.json", "detections.csv"):
+            self.assertTrue((self.tmp / "eval" / name).exists(), name)
+        pairs = self.read("pairwise_iou.csv")
+        self.assertEqual(len(pairs), 2 * 3 * 6)  # 2 images x 3 thresholds x C(4,2)
+        self.assertEqual({p["iou_threshold"] for p in pairs}, {"0.50", "0.75", "1.00"})
+        self.assertTrue(all(r["matches_counts_summary_csv"] == "True" for r in self.read("count_consistency.csv")))
+        cfg = json.loads((self.tmp / "eval" / "evaluation_config.json").read_text())
+        self.assertEqual(cfg["iou_thresholds"], ["1/2", "3/4", "1"])
+        self.assertEqual(cfg["api_requests_made"], 0)
+        self.assertTrue(cfg["inputs"] and all(len(i["sha256"]) == 64 for i in cfg["inputs"]))
+        self.assertEqual(len(res["units"]), 2)
+
+    def test_reproducible_outputs(self):
+        self.evaluate("e1")
+        self.evaluate("e2")
+        files = sorted(p.relative_to(self.tmp / "e1") for p in (self.tmp / "e1").rglob("*") if p.is_file())
+        self.assertTrue(files)
+        for f in files:
+            if f.name == "evaluation_config.json":
+                a = json.loads((self.tmp / "e1" / f).read_text())
+                b = json.loads((self.tmp / "e2" / f).read_text())
+                for k in ("generated_utc", "command"):
+                    a.pop(k), b.pop(k)
+                self.assertEqual(a, b)
+            else:
+                self.assertEqual((self.tmp / "e1" / f).read_bytes(), (self.tmp / "e2" / f).read_bytes(), f)
+
+    def test_no_accuracy_without_complete_reference(self):
+        self.evaluate()
+        self.assertFalse((self.tmp / "eval" / "accuracy_vs_reference.csv").exists())
+        report = (self.tmp / "eval" / "evaluation_report.md").read_text(encoding="utf-8")
+        self.assertIn("not computed", report)
+        for name in ("pairwise_iou.csv", "iou_summary.csv", "detection_persistence.csv", "count_consistency.csv"):
+            header = (self.tmp / "eval" / name).read_text(encoding="utf-8").splitlines()[0].lower()
+            for word in ("precision", "recall", "f1", "accuracy"):
+                self.assertNotIn(word, header, name)
+
+    def test_partial_reference_blocks_and_complete_reference_enables_accuracy(self):
+        self.evaluate()  # creates human_review files
+        det = [r for r in self.read("detections.csv") if r["image_id"] == "IMG_A" and r["trial"] == "1"]
+        with (self.review / "reference_boxes.csv").open("a", newline="") as f:
+            w = csv.writer(f)
+            for i, r in enumerate(det):
+                w.writerow([f"R{i}", "IMG_A", r["x_min_px"], r["y_min_px"], r["x_max_px"], r["y_max_px"], "TREE", "", "", ""])
+        status = self.read_status()
+        self.write_status(status, "PARTIAL")
+        self.evaluate()
+        self.assertFalse((self.tmp / "eval" / "accuracy_vs_reference.csv").exists())
+        self.write_status(status, "COMPLETE")
+        self.evaluate()
+        acc = [r for r in self.read("accuracy_vs_reference.csv") if r["trial"] == "1"]
+        self.assertEqual(len(acc), 3)
+        for r in acc:
+            self.assertEqual((r["precision"], r["recall"], r["false_positives"], r["false_negatives"]), ("1", "1", "0", "0"))
+        self.assertEqual({r["image_id"] for r in self.read("accuracy_vs_reference.csv")}, {"IMG_A"})
+
+    def read_status(self):
+        with (self.review / "reference_status.csv").open(newline="") as f:
+            return list(csv.DictReader(f))
+
+    def write_status(self, rows, status):
+        for r in rows:
+            r["reference_status"] = status if r["image_id"] == "IMG_A" else "NONE"
+        with (self.review / "reference_status.csv").open("w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0]))
+            w.writeheader()
+            w.writerows(rows)
+
+    def test_human_labels_preserved_and_summarized(self):
+        self.evaluate()
+        path = self.review / "manual_review.csv"
+        with path.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        rows[0]["human_label"], rows[0]["human_note"] = "NON_TREE", "a shrub"
+        rows[1]["human_label"] = "bogus"
+        with path.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0]))
+            w.writeheader()
+            w.writerows(rows)
+        before = path.read_bytes()
+        res = self.evaluate()
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(res["review"]["labels"][rows[0]["review_unit_id"]]["label"], "NON_TREE")
+        self.assertEqual(len(res["review"]["label_errors"]), 1)
+        report = (self.tmp / "eval" / "evaluation_report.md").read_text(encoding="utf-8")
+        self.assertIn("| NON_TREE | 1 |", report)
+        self.assertIn("Input problem", report)
+
+    def test_tampered_detections_rejected(self):
+        det = next(self.results.rglob("detections.json"))
+        data = json.loads(det.read_text())
+        data["trees"][0]["bbox"][2] += 1
+        det.write_text(json.dumps(data))
+        with self.assertRaises(ev.InputError):
+            self.evaluate()
+
+    def test_never_writes_inside_benchmark_results(self):
+        with self.assertRaises(ev.InputError):
+            ev.run(self.results, None, self.results / "eval", self.review, self.manifest, self.tmp, figures=False, log=quiet)
+        before = sorted(p for p in self.results.rglob("*"))
+        self.evaluate()
+        self.assertEqual(before, sorted(p for p in self.results.rglob("*")))
+
+    def test_refuses_to_clear_foreign_directory(self):
+        (self.tmp / "eval").mkdir()
+        (self.tmp / "eval" / "mine.txt").write_text("x")
+        with self.assertRaises(ev.InputError):
+            self.evaluate()
+
+    def test_figures_and_review_images(self):
+        res = self.evaluate(figures=True)
+        paths = [p for ps in res["figures"].values() for p in ps]
+        names = {p.name for p in paths}
+        for prefix in ("A_", "B_persistence_overview", "B_persistence_map_iou050", "B_persistence_map_iou075",
+                       "B_persistence_map_iou100", "C_", "D_", "E_"):
+            self.assertTrue(any(n.startswith(prefix) for n in names), prefix)
+        self.assertTrue(all(p.exists() for p in paths))
+        template = self.read("manual_review_template.csv")
+        self.assertTrue(all((self.tmp / "eval" / r["crop_path"]).exists() for r in template))
+        self.assertEqual(len(list((self.tmp / "eval" / "review").glob("contact_sheet_*.png"))), 2)
+
+
+@unittest.skipUnless((REPO / "benchmark_results" / "lowalt_pilot_pt02_64m_v1").exists(), "pilot results not present")
+class TestPilotResults(unittest.TestCase):
+    def test_evaluation_of_saved_pilot_trials(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            res = ev.run(REPO / "benchmark_results", ["lowalt_pilot_ptr1_27m_v1", "lowalt_pilot_pt02_64m_v1"],
+                         tmp / "eval", tmp / "review", REPO / "manifests" / "manifest.csv", REPO, figures=False, log=quiet)
+            self.assertEqual(len(res["units"]), 2)
+            for u in res["units"]:
+                self.assertEqual(u.n_trials, 10)
+                for t in ec.THRESHOLDS:
+                    self.assertEqual(res["results"][u.key][t].summary["n_pairs"], 45)
+                self.assertTrue(ev.verify_counts(u, res["stats"][u.key]))
+            self.assertEqual(res["accuracy_rows"], [])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    unittest.main()
