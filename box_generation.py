@@ -32,6 +32,7 @@ EFFORT = "high"
 MAX_TOKENS = 32000
 MAX_IMAGE_BYTES = 5 * 1024 * 1024  # API per-image limit for base64 uploads
 MAX_UPLOAD_EDGE = 2576             # longest edge sent to the API
+JPEG_QUALITIES = (95, 90, 85, 80, 70)  # tried in order until under MAX_IMAGE_BYTES
 
 PROMPT_TEMPLATE = """# Tree Detection Instructions
 
@@ -177,39 +178,39 @@ def load_image(path: Path) -> Image.Image:
     return img.convert("RGB")
 
 
-def encode_for_api(img: Image.Image) -> str:
+def prepare_upload(img: Image.Image) -> tuple:
     """JPEG encode, downscaling if needed to stay under API limits.
-    Normalized 0 to 1000 coordinates are scale invariant, so this is safe."""
+    Normalized 0 to 1000 coordinates are scale invariant, so this is safe.
+    Returns (jpeg_bytes, info) where info records the upload dimensions and quality."""
     work = img.copy()
     if max(work.size) > MAX_UPLOAD_EDGE:
         work.thumbnail((MAX_UPLOAD_EDGE, MAX_UPLOAD_EDGE), Image.LANCZOS)
-    for quality in (95, 90, 85, 80, 70):
+    for quality in JPEG_QUALITIES:
         buf = io.BytesIO()
         work.save(buf, format="JPEG", quality=quality)
         if buf.tell() <= MAX_IMAGE_BYTES:
-            return base64.standard_b64encode(buf.getvalue()).decode("ascii")
+            info = {"width": work.width, "height": work.height,
+                    "jpeg_quality": quality, "bytes": buf.tell()}
+            return buf.getvalue(), info
     raise ValueError("Could not encode image under the 5 MB API limit.")
 
 
-def call_claude(img: Image.Image, prompt: str) -> dict:
-    import anthropic
-    from dotenv import load_dotenv
+def encode_for_api(img: Image.Image) -> str:
+    jpeg_bytes, _ = prepare_upload(img)
+    return base64.standard_b64encode(jpeg_bytes).decode("ascii")
 
-    # Load ANTHROPIC_API_KEY from the .env file next to this script.
-    load_dotenv(Path(__file__).resolve().parent / ".env")
-    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
-    image_b64 = encode_for_api(img)
 
-    # Streaming avoids HTTP timeouts on long, high effort requests.
-    with client.messages.stream(
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        thinking={"type": "adaptive"},
-        output_config={
+def build_request(image_b64: str, prompt: str) -> dict:
+    """Messages API parameters shared by the single-image CLI and the batch runner."""
+    return {
+        "model": MODEL,
+        "max_tokens": MAX_TOKENS,
+        "thinking": {"type": "adaptive"},
+        "output_config": {
             "effort": EFFORT,
             "format": {"type": "json_schema", "schema": OUTPUT_SCHEMA},
         },
-        messages=[
+        "messages": [
             {
                 "role": "user",
                 "content": [
@@ -225,7 +226,25 @@ def call_claude(img: Image.Image, prompt: str) -> dict:
                 ],
             }
         ],
-    ) as stream:
+    }
+
+
+def load_env() -> None:
+    """Load ANTHROPIC_API_KEY from the .env file next to this script."""
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+
+
+def call_claude(img: Image.Image, prompt: str) -> dict:
+    import anthropic
+
+    load_env()
+    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
+    image_b64 = encode_for_api(img)
+
+    # Streaming avoids HTTP timeouts on long, high effort requests.
+    with client.messages.stream(**build_request(image_b64, prompt)) as stream:
         message = stream.get_final_message()
 
     if message.stop_reason == "max_tokens":
