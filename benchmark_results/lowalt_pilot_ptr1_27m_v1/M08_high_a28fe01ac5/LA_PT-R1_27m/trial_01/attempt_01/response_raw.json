@@ -1,0 +1,38 @@
+{
+  "id": "msg_011CgZ3ufqzjMUsNrVVA6Uif",
+  "container": null,
+  "content": [
+    {
+      "signature": "CAQShAkKEAgTGAI4AUIIdGhpbmtpbmcSDL+SD3s2DvM8h1wqRxoM4pMbqQJtreLgy+ypIjCsTe9KhuvlLiWTUsNi/kGEWCKzRmHXsKGhfa3dZ+70t1COkihBFiI95OhbLxB9l4MqoQjDfqLbpqglvM7NGofh6yRdh1MlaB9sRZwidY3Rd4XLOnZMGfW2DSbSbKw8u+kB4r9YQ/y5Oti+PabpiL8uh0PeldURTN7bojJvUsaMxAvKejLnvdDCfkkDRZ7xlQVKXG6m8uAco60tVLUERyERKgaXuzcoSSLY0G1k7IA2Cpe6qEyS7agHAy/pRMfTXnKC3d8eeAJQ7DFtfpgaKBUqS+Cdt75/YM/kZoq8znSAjxYZ22+4Qc3sC7krKL1rSZqH1Ob7ipk/bgSkFhNIErG7CI1vaPS+iqaqUxhfkWKpSk0adIaiNUpa7AgvnV/M7Xcb/cOkQs+N1WvPTRMd3x+MoSxUOJ5iFFPf3e7IIBLTd9raZ9m7uBJlDfnjywsvNQ87KaLl8lPvktvW4jNUhng1NTObN998AW51eGrfSjTm4Vl8YEzSqXD8eRXMZi5J7dpNeELiBOU9aBaExEy92EZB9tzenBvwZah8vfMdkNR97INONYAbLb6FoVsNHXfLRbmg3FgeYSz5Hq+7h16/zSFf4i3OaAd+Pvyo/CL2uzgYYWV12FFjtl3InHejZHzdm3AzOgK1kFrqce0hQpN9dgd/1tKB6CBuWFVjk12y50qPPthCxgf+dZkoAsfP6K23rq0bxQFmQeD3cTiqE/Bdd2+/dJWw+RkCc9YbdD8gwFYLgcTLuTRAb6iyJqLJ1eaGPs6UJbhi6OeoblZAc/aWbc2D+tS7/7LQ3HnupQBYRYSj70rq5Lvqjq/PgcoeqyEP1YTlrSa0Toe4Hr87pogRDXeS9WcL8rY7lZah3furQ7LPz3pdlBtcRyV8f0UaeeB0+eIjN6/gFMmVJzjPGiZgb4VwHgU5c9a4h16+Jowek3eW9FQD4PtTX1H5KqDODpdEHCh3plqM6aS+U2Dt3BWv2iRauiUkOAbqcnViPwpkwqni67UVo3u2jk6MImVSc27n1Hypkp5kPF9wtFaIeV0eZ1U2LYq2s9IQlxh/UpzUZcc3laTJ5YGZJPiR20zSfr423nH+9pc9gQ2yWeVJwLgetXVBKgwnvH1uEN+1V7HikldFGKwKKxADqnZdy6Wf16GxamHnx2ol2Ipu8Y/zKjs0P03WU++iOEen0scHMmCy9fZKIVBrzdKyW3YjUBxTtyYtjspD1vdEwzOZ1c+vNJ3yf/sSxoopfYABoQk3/se7X4XP0+7djhTYZGmTyAQihuYvFm6zdA8iP/yEwxzze8x5Cx5rSWY1S5OI5TcTRJprkNYiS2hket6CuNX+Y7r7oL8rPdio9YSiofx1Lh2vH49hYDSIdlj9Xcl9Oqlb9r4je2ysaXcTB0b+KSjQwB2I1yEvXVIoKp5hGZO4Zg88+VVpO+LkczwXCbHEZpkuD7fcICD7573PcVGuqhQ/te5S7vpIRpVOuCFwGAE=",
+      "thinking": "",
+      "type": "thinking"
+    },
+    {
+      "text": "{\"site\":\"PT-R1\",\"week\":\"NOT_APPLICABLE\",\"condition\":\"ALTITUDE_TEST\",\"trees\":[{\"tree_id\":\"T001\",\"bbox\":[717,54,943,316]},{\"tree_id\":\"T002\",\"bbox\":[424,127,497,241]},{\"tree_id\":\"T003\",\"bbox\":[579,139,646,247]},{\"tree_id\":\"T004\",\"bbox\":[432,648,506,738]},{\"tree_id\":\"T005\",\"bbox\":[189,579,246,669]},{\"tree_id\":\"T006\",\"bbox\":[289,609,348,693]}]}",
+      "type": "text"
+    }
+  ],
+  "diagnostics": null,
+  "model": "claude-opus-5-5",
+  "role": "assistant",
+  "stop_details": null,
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "type": "message",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "inference_geo": "global",
+    "input_tokens": 6346,
+    "output_tokens": 498,
+    "output_tokens_details": {
+      "thinking_tokens": 298
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  }
+}

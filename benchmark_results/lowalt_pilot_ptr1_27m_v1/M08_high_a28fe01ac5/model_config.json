@@ -1,0 +1,35 @@
+{
+  "adapter": "anthropic-messages",
+  "model_code": "M08",
+  "model": "claude-opus-5-5",
+  "inference": {
+    "effort": "high",
+    "thinking": {
+      "type": "adaptive"
+    },
+    "max_tokens": 32000,
+    "streaming": true,
+    "structured_output": "output_config.format json_schema"
+  },
+  "prompt_template_sha256": "e53504b32a5931a597ebd8499aba89f602d90b720d8a0bb9d9ea92cfc96c100f",
+  "output_schema_sha256": "963a771dd008a68fbca9cb2b42e762d9109fb40cd52423d8b706b7b8e2bc8e38",
+  "coordinates": "normalized 0-1000 [x_min, y_min, x_max, y_max], origin top-left",
+  "preprocessing": {
+    "version": 2,
+    "exif_transpose": true,
+    "color_mode": "RGB",
+    "max_upload_edge_px": 2576,
+    "max_visual_tokens": 4784,
+    "resize": "PIL Image.resize, LANCZOS, to the documented API target size (largest aspect-preserving size within both limits)",
+    "server_resize_guard": "image transformations.oversized_image = error",
+    "format": "JPEG",
+    "jpeg_qualities_tried": [
+      95,
+      90,
+      85,
+      80,
+      70
+    ],
+    "max_image_bytes": 5242880
+  }
+}

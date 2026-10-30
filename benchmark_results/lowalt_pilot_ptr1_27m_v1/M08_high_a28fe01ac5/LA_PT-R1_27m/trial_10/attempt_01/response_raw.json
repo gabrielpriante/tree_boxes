@@ -1,0 +1,33 @@
+{
+  "id": "msg_011CgZ3z7KJGb3roWtEX5Bqt",
+  "container": null,
+  "content": [
+    {
+      "text": "{\"site\":\"PT-R1\",\"week\":\"NOT_APPLICABLE\",\"condition\":\"ALTITUDE_TEST\",\"trees\":[{\"tree_id\":\"T001\",\"bbox\":[718,55,945,320]},{\"tree_id\":\"T002\",\"bbox\":[423,128,498,240]},{\"tree_id\":\"T003\",\"bbox\":[579,147,648,249]},{\"tree_id\":\"T004\",\"bbox\":[432,642,507,750]},{\"tree_id\":\"T005\",\"bbox\":[188,580,250,668]},{\"tree_id\":\"T006\",\"bbox\":[288,610,350,697]},{\"tree_id\":\"T007\",\"bbox\":[372,509,416,559]}]}",
+      "type": "text"
+    }
+  ],
+  "diagnostics": null,
+  "model": "claude-opus-5-5",
+  "role": "assistant",
+  "stop_details": null,
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "type": "message",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "inference_geo": "global",
+    "input_tokens": 6346,
+    "output_tokens": 225,
+    "output_tokens_details": {
+      "thinking_tokens": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  }
+}
