@@ -1,0 +1,3 @@
+site,inventory_tree_count,scope,source,recorded,notes
+PT-02,24,SITE,field inventory (reported by project lead),2026-10-30,Site-level count. Not an image-level reference: image coverage_scope is UNKNOWN.
+PT-R1,11,SITE,field inventory (reported by project lead),2026-10-30,Site-level count. Not an image-level reference: image coverage_scope is UNKNOWN.

@@ -1,0 +1,3 @@
+experiment_id,site,image_id,mean_model_count,site_field_inventory_count,inventory_scope,image_coverage_scope,difference_mean_minus_inventory,used_as_image_ground_truth,notes
+lowalt_pilot_pt02_64m_v1,PT-02,LA_PT-02_64m,24.5,24,SITE,UNKNOWN,0.5,False,Site-level count. Not an image-level reference: image coverage_scope is UNKNOWN.
+lowalt_pilot_ptr1_27m_v1,PT-R1,LA_PT-R1_27m,6.1,11,SITE,UNKNOWN,-4.9,False,Site-level count. Not an image-level reference: image coverage_scope is UNKNOWN.
