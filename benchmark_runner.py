@@ -33,9 +33,11 @@ import hashlib
 import json
 import os
 import shutil
+import re
 import statistics
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -43,20 +45,36 @@ import box_generation as bg
 from model_adapters import FatalAdapterError, get_adapter
 
 ROOT = Path(__file__).resolve().parent
-RECORD_SCHEMA_VERSION = 1
+PRODUCTION_OUTPUT_DIR = ROOT / "benchmark_results"
+MOCK_OUTPUT_DIR = ROOT / "benchmark_results_mock"
+LEDGER_DIR = ROOT / "spend_ledger"  # project-wide, independent of --output-dir and --experiment-id
+RECORD_SCHEMA_VERSION = 2
 UNKNOWN = "UNKNOWN"
+NOT_APPLICABLE = "NOT_APPLICABLE"
 
 MANIFEST_REQUIRED = ["image_id", "image_path", "site", "week", "condition", "altitude_m", "coverage_scope"]
 PROMPT_FIELDS = ("site", "week", "condition")  # these values are inserted into the prompt
 MANIFEST_CARRIED = MANIFEST_REQUIRED + ["collection"]
 
+# Controlled vocabulary. UNKNOWN = not yet established; NOT_APPLICABLE = does not apply.
+ALLOWED_SITES = {"PT-02", "PT-R1", UNKNOWN}
+WEEK_RE = re.compile(r"^WEEK \d+$")
+ALLOWED_WEEK_LABELS = {NOT_APPLICABLE, UNKNOWN}
+# BEFORE/AFTER: intervention sessions. ALTITUDE_TEST: altitude-series flights outside the
+# intervention sessions. MORNING_START/AFTERNOON_END: week 1 folder labels, mapping unconfirmed.
+ALLOWED_CONDITIONS = {"BEFORE", "AFTER", "ALTITUDE_TEST", "MORNING_START", "AFTERNOON_END", UNKNOWN}
+ALLOWED_COVERAGE = {"FULL_SITE", "PARTIAL_SITE", UNKNOWN}
+
 # A trial is complete once one attempt reaches a terminal status. Terminal statuses are
 # model outcomes and are never re-run automatically, so results cannot be cherry-picked.
 TERMINAL = {"success", "invalid", "refusal", "max_tokens"}
+NONSUCCESS_TERMINAL = TERMINAL - {"success"}
 # Retryable statuses: no usable model outcome (API/transport failure or interruption).
 RETRYABLE = {"error", "interrupted"}
 
 MAX_CONSECUTIVE_FAILED_TRIALS = 3
+DEFAULT_PAUSE_AFTER = 3  # consecutive invalid/refusal/max_tokens trials before pausing
+PAUSE_FILE = "PAUSED.json"
 
 LONG_FIELDS = [
     "experiment_id", "image_id", "site", "week", "condition", "altitude_m", "model", "trial",
@@ -87,6 +105,10 @@ INVALID_FIELDS = ["experiment_id", "model_config_id", "image_id", "trial", "atte
 
 class BudgetStop(Exception):
     pass
+
+
+class PauseStop(Exception):
+    """Too many consecutive non-success outcomes; a person should look before spending more."""
 
 
 class ConsistencyError(Exception):
@@ -158,7 +180,43 @@ def write_csv(path: Path, fields: list, rows: list) -> None:
 
 # ---------------------------------------------------------------- manifest
 
-def load_manifest(path: Path, image_root: Path = ROOT, image_ids=None) -> list:
+def metadata_errors(row: dict) -> list:
+    """Values outside the controlled vocabulary (typos, free text, blanks)."""
+    errors = []
+    if row["site"] not in ALLOWED_SITES:
+        errors.append(f"site {row['site']!r} not in {sorted(ALLOWED_SITES)}")
+    if not (WEEK_RE.match(row["week"]) or row["week"] in ALLOWED_WEEK_LABELS):
+        errors.append(f"week {row['week']!r} must be 'WEEK <n>', {NOT_APPLICABLE} or {UNKNOWN}")
+    if row["condition"] not in ALLOWED_CONDITIONS:
+        errors.append(f"condition {row['condition']!r} not in {sorted(ALLOWED_CONDITIONS)}")
+    if row["coverage_scope"] not in ALLOWED_COVERAGE:
+        errors.append(f"coverage_scope {row['coverage_scope']!r} not in {sorted(ALLOWED_COVERAGE)}")
+    if row["altitude_m"] != UNKNOWN:
+        try:
+            float(row["altitude_m"])
+        except ValueError:
+            errors.append(f"altitude_m {row['altitude_m']!r} is not a number or {UNKNOWN}")
+    return errors
+
+
+def review_fields(row: dict) -> set:
+    return {f.strip() for f in row.get("needs_review", "").split(";") if f.strip()}
+
+
+def prompt_metadata_blockers(row: dict) -> list:
+    """Reasons the image cannot run yet. Prompt fields must be known (NOT_APPLICABLE is a
+    legitimate value) and must not be awaiting confirmation in needs_review."""
+    reasons = []
+    unknown = [f for f in PROMPT_FIELDS if is_unknown(row[f])]
+    if unknown:
+        reasons.append(f"unknown: {', '.join(unknown)}")
+    unconfirmed = [f for f in PROMPT_FIELDS if f in review_fields(row) and f not in unknown]
+    if unconfirmed:
+        reasons.append(f"awaiting confirmation (needs_review): {', '.join(unconfirmed)}")
+    return reasons
+
+
+def load_manifest(path: Path, image_root: Path = ROOT, image_ids=None, collection=None) -> list:
     with path.open(newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         missing = [c for c in MANIFEST_REQUIRED if c not in (reader.fieldnames or [])]
@@ -172,6 +230,9 @@ def load_manifest(path: Path, image_root: Path = ROOT, image_ids=None) -> list:
     dupes = sorted({i for i in ids if ids.count(i) > 1})
     if dupes:
         raise ValueError(f"Duplicate image_id values in manifest: {dupes}")
+    bad = [f"{r['image_id']}: {e}" for r in rows for e in metadata_errors(r)]
+    if bad:
+        raise ValueError("Manifest values outside the allowed vocabulary:\n  " + "\n  ".join(bad))
 
     if image_ids:
         unknown = [i for i in image_ids if i not in ids]
@@ -179,6 +240,10 @@ def load_manifest(path: Path, image_root: Path = ROOT, image_ids=None) -> list:
             raise ValueError(f"image ids not in manifest: {unknown}")
         wanted = set(image_ids)
         rows = [r for r in rows if r["image_id"] in wanted]  # manifest order, not CLI order
+    if collection:
+        rows = [r for r in rows if r.get("collection") == collection]
+        if not rows:
+            raise ValueError(f"No manifest rows with collection {collection!r}")
 
     missing_files = []
     for r in rows:
@@ -290,6 +355,7 @@ def load_attempt(adir: Path) -> dict:
         "cost_basis": "worst_case_bound (process ended before a record was written)",
         "error": "no record.json; process ended during the request",
         "_path": req_path if req_path.exists() else adir,
+        "_orphan": True,
     }
 
 
@@ -325,21 +391,199 @@ def observed_input_tokens(run_dir: Path, image_id: str) -> int | None:
     return max(seen) if seen else None
 
 
-def worst_case_usd(adapter, prompt: str, observed: int | None) -> float:
-    input_tokens = observed if observed else adapter.estimate_input_tokens(prompt)
+def expected_image_tokens(row: dict) -> int | None:
+    """Visual tokens of the upload, from the manifest dimensions (no image decoding)."""
+    try:
+        w, h = int(row["width"]), int(row["height"])
+    except (KeyError, ValueError):
+        return None
+    return bg.count_image_tokens(*bg.api_resized_size(w, h))
+
+
+def worst_case_usd(adapter, prompt: str, observed: int | None, image_tokens: int | None = None) -> float:
+    input_tokens = observed if observed else adapter.estimate_input_tokens(prompt, image_tokens)
     return adapter.cost_usd({"input_tokens": input_tokens, "output_tokens": adapter.max_output_tokens()})
+
+
+# ---------------------------------------------------------------- project spending ledger
+
+def attempt_key(a: dict) -> str:
+    """Stable identity of one attempt, so it is never counted twice."""
+    if a.get("attempt_uid"):
+        return a["attempt_uid"]
+    return "legacy:{}/{}/{}/trial_{:02d}/attempt_{:02d}".format(
+        a.get("experiment_id"), a.get("model_config_id"), a.get("image_id"),
+        int(a.get("trial") or 0), int(a.get("attempt") or 0))
+
+
+class SpendLedger:
+    """Append-only JSONL ledger of every paid attempt for one billing account, shared by all
+    experiments, experiment ids and output directories in this project.
+
+    Each attempt writes a 'start' entry (with its worst-case cost) before the request and a
+    'final' entry afterwards. Entries are keyed by attempt_uid, so re-reading, reconciling or
+    a repeated write never counts an attempt twice. An attempt with no 'final' entry (the
+    process died mid-request) is counted at its worst case.
+    """
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+
+    def _append(self, entry: dict) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, sort_keys=True) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+
+    def entries(self) -> list:
+        if not self.path.exists():
+            return []
+        lines = self.path.read_text(encoding="utf-8").splitlines()
+        out = []
+        for i, line in enumerate(lines):
+            if not line.strip():
+                continue
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                if i == len(lines) - 1:
+                    continue  # partial final line from a crash mid-write
+                raise ValueError(f"Corrupt ledger line {i + 1} in {self.path}")
+        return out
+
+    def by_attempt(self) -> dict:
+        starts, finals = {}, {}
+        for e in self.entries():
+            target = starts if e["event"] == "start" else finals
+            target.setdefault(e["attempt_uid"], e)  # first entry wins; duplicates ignored
+        return {"starts": starts, "finals": finals}
+
+    def start(self, uid: str, meta: dict, worst_case: float, backfilled: bool = False) -> None:
+        self._append({"event": "start", "attempt_uid": uid, "timestamp_utc": now_utc(),
+                      "worst_case_usd": round(worst_case, 6), "backfilled": backfilled, **meta})
+
+    def finish(self, uid: str, cost: float, cost_basis: str, status: str, backfilled: bool = False) -> None:
+        self._append({"event": "final", "attempt_uid": uid, "timestamp_utc": now_utc(),
+                      "cost_usd": round(cost, 6), "cost_basis": cost_basis, "status": status,
+                      "backfilled": backfilled})
+
+    def summary(self) -> dict:
+        idx = self.by_attempt()
+        confirmed = estimated = unresolved = 0.0
+        for uid in set(idx["starts"]) | set(idx["finals"]):
+            final = idx["finals"].get(uid)
+            if final is None:
+                unresolved += idx["starts"][uid]["worst_case_usd"]
+            elif final["cost_basis"] == "actual_usage":
+                confirmed += final["cost_usd"]
+            else:
+                estimated += final["cost_usd"]
+        return {"confirmed_usd": confirmed, "estimated_usd": estimated, "unresolved_usd": unresolved,
+                "total_usd": confirmed + estimated + unresolved,
+                "attempts": len(set(idx["starts"]) | set(idx["finals"]))}
+
+    def reconcile(self, attempts: list) -> int:
+        """Add entries for on-disk attempts the ledger is missing (a crash between record.json
+        and the ledger write, or results written before the ledger existed)."""
+        idx = self.by_attempt()
+        added = 0
+        for a in attempts:
+            uid = attempt_key(a)
+            if uid in idx["finals"]:
+                continue
+            meta = {k: a.get(k) for k in ("experiment_id", "model_config_id", "image_id", "trial", "attempt")}
+            if uid not in idx["starts"]:
+                self.start(uid, meta, float(a.get("pre_request_worst_case_usd") or 0.0), backfilled=True)
+                added += 1
+            if not a.get("_orphan"):
+                self.finish(uid, float(a.get("estimated_cost_usd") or 0.0), a.get("cost_basis", ""),
+                            a.get("status", ""), backfilled=True)
+                added += 1
+        return added
+
+
+def ledger_report(summary: dict, max_usd: float | None) -> list:
+    lines = [f"Project spending ledger ({summary['attempts']} recorded attempts):",
+             f"  confirmed from API usage:          ${summary['confirmed_usd']:.4f}",
+             f"  estimated (interrupted/failed):    ${summary['estimated_usd']:.4f}",
+             f"  unresolved (no final entry):       ${summary['unresolved_usd']:.4f}",
+             f"  total counted against the budget:  ${summary['total_usd']:.4f}"]
+    if max_usd is not None:
+        lines.append(f"  budget ${max_usd:.2f}; remaining ${max_usd - summary['total_usd']:.4f}")
+    lines.append("  Spending outside this project (Console, other scripts, other machines) is not visible here.")
+    return lines
+
+
+def affordable_trials(remaining: float, worst: float, per_trial: float) -> int:
+    """Trials the pre-request guard admits if each actually costs per_trial."""
+    if remaining < worst or per_trial <= 0:
+        return 0
+    return int((remaining - worst) // per_trial) + 1
+
+
+# ---------------------------------------------------------------- pause safeguard
+
+def pause_state(run_dir: Path) -> tuple:
+    """(active pause dict or None, unix-ns time of the most recent acknowledgment)."""
+    active = read_json(run_dir / PAUSE_FILE) if (run_dir / PAUSE_FILE).exists() else None
+    acks = [read_json(p).get("acknowledged_unix_ns", 0) for p in run_dir.glob("PAUSED_acknowledged_*.json")]
+    return active, max(acks, default=0)
+
+
+def acknowledge_pause(run_dir: Path) -> dict | None:
+    active, _ = pause_state(run_dir)
+    if not active:
+        return None
+    active["acknowledged_utc"] = now_utc()
+    active["acknowledged_unix_ns"] = time.time_ns()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    write_new_json(run_dir / f"PAUSED_acknowledged_{stamp}.json", active)
+    (run_dir / PAUSE_FILE).unlink()
+    return active
+
+
+def write_pause(run_dir: Path, streak: list, threshold: int, exp_dir: Path) -> None:
+    write_json(run_dir / PAUSE_FILE, {
+        "created_utc": now_utc(),
+        "reason": f"{len(streak)} consecutive trials ended invalid, refused or truncated "
+                  f"(threshold {threshold})",
+        "threshold": threshold,
+        "trials": [{"image_id": r.get("image_id"), "trial": r.get("trial"), "attempt": r.get("attempt"),
+                    "status": r.get("status"), "stop_reason": r.get("stop_reason"),
+                    "errors": (r.get("validation") or {}).get("errors", [])[:5],
+                    "record": Path(r["_path"]).relative_to(exp_dir).as_posix() if r.get("_path")
+                    else None} for r in streak],
+        "note": "These trials are complete, recorded experimental outcomes and will not be re-run. "
+                "Continue with --resume --acknowledge-pause after reviewing them.",
+    })
+
+
+def nonsuccess_streak(run_dir: Path, since_ns: int) -> list:
+    """Trailing run of consecutive non-success terminal trials, in execution order,
+    counting only trials finished after the last acknowledged pause."""
+    done = [a for a in all_attempts(run_dir)
+            if a.get("status") in TERMINAL and (a.get("finished_unix_ns") or 0) > since_ns]
+    done.sort(key=lambda a: a.get("finished_unix_ns") or 0)
+    streak = []
+    for a in done:
+        streak = streak + [a] if a["status"] in NONSUCCESS_TERMINAL else []
+    return streak
 
 
 # ---------------------------------------------------------------- one attempt
 
-def run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image, run_dir, worst_case, manifest_sha):
+def run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image, run_dir, worst_case, manifest_sha,
+                ledger: SpendLedger):
     trial_dir = run_dir / row["image_id"] / f"trial_{trial:02d}"
     attempt = len(attempt_dirs(trial_dir)) + 1 if trial_dir.exists() else 1
     adir = trial_dir / f"attempt_{attempt:02d}"
     adir.mkdir(parents=True, exist_ok=False)
+    uid = uuid.uuid4().hex
 
     base = {
         "record_schema_version": RECORD_SCHEMA_VERSION,
+        "attempt_uid": uid,
         "experiment_id": experiment_id,
         "model_config_id": cfg_id,
         "model_code": cfg["model_code"],
@@ -363,6 +607,9 @@ def run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image, run_dir,
     }
     write_new_json(adir / "request.json", base)
     (adir / "prompt.txt").write_text(image["prompt"], encoding="utf-8")
+    ledger.start(uid, {"experiment_id": experiment_id, "model_config_id": cfg_id,
+                       "image_id": row["image_id"], "trial": trial, "attempt": attempt,
+                       "record_dir": adir.as_posix()}, worst_case)
 
     record = {**base, "status": None, "stop_reason": None, "tree_count": None, "raw_box_count": None,
               "usage": {}, "estimated_cost_usd": 0.0, "cost_basis": "not_billed",
@@ -373,9 +620,12 @@ def run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image, run_dir,
     def finish(status):
         record["status"] = status
         record["finished_utc"] = now_utc()
+        record["finished_unix_ns"] = time.time_ns()
         record["duration_s"] = round(time.monotonic() - t0, 2)
         record["estimated_cost_usd"] = round(record["estimated_cost_usd"], 6)
         write_new_json(adir / "record.json", record)
+        ledger.finish(uid, record["estimated_cost_usd"], record["cost_basis"], status)
+        record["_path"] = adir / "record.json"  # in-memory only
         return record
 
     context = {"image_id": row["image_id"], "trial": trial, "attempt": attempt}
@@ -461,6 +711,11 @@ def prepare_image(row: dict) -> dict:
         "original_height": original.height,
         "upload_width": upload["width"],
         "upload_height": upload["height"],
+        # Equal to the upload size: the upload is pre-resized to the API's documented target,
+        # and the request sets oversized_image=error, so the API cannot downsize it further.
+        "api_effective_width": upload["width"],
+        "api_effective_height": upload["height"],
+        "upload_visual_tokens": upload["visual_tokens"],
         "upload_jpeg_quality": upload["jpeg_quality"],
         "upload_bytes": upload["bytes"],
         "upload_sha256": sha256_bytes(jpeg),
@@ -594,67 +849,106 @@ def aggregate(exp_dir: Path) -> dict:
 def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int = 10,
                   max_usd: float | None = None, resume: bool = False, dry_run: bool = True,
                   max_attempts: int = 2, allow_unknown_metadata: bool = False,
-                  manifest_path: Path | None = None, log=print) -> dict:
+                  manifest_path: Path | None = None, ledger_path: Path | None = None,
+                  pause_after: int = DEFAULT_PAUSE_AFTER, acknowledge_paused: bool = False,
+                  log=print) -> dict:
     cfg = adapter.config()
     cfg_id = config_id(cfg)
     exp_dir = output_dir / experiment_id
     run_dir = exp_dir / cfg_id
+    ledger = SpendLedger(ledger_path or output_dir / f"{adapter.billing_account}_spend_ledger.jsonl")
     report = {"experiment_id": experiment_id, "model_config_id": cfg_id, "run_dir": str(run_dir),
-              "trials_run": 0, "stopped": None, "skipped_images": []}
+              "trials_run": 0, "stopped": None, "skipped_images": [], "ledger": str(ledger.path)}
 
-    runnable = []
-    for row in rows:
-        unknown = [f for f in PROMPT_FIELDS if is_unknown(row[f])]
-        if unknown and not allow_unknown_metadata:
-            report["skipped_images"].append((row["image_id"], f"prompt metadata unknown: {unknown}"))
-            continue
-        runnable.append(row)
+    blockers = {r["image_id"]: ([] if allow_unknown_metadata else prompt_metadata_blockers(r)) for r in rows}
+    report["skipped_images"] = [(i, "; ".join(b)) for i, b in blockers.items() if b]
 
-    states = {}
-    for row in runnable:
-        states[row["image_id"]] = {t: trial_state(run_dir / row["image_id"] / f"trial_{t:02d}")
-                                   for t in range(1, runs + 1)}
+    states = {r["image_id"]: {t: trial_state(run_dir / r["image_id"] / f"trial_{t:02d}")
+                              for t in range(1, runs + 1)} for r in rows}
     existing = [i for i, s in states.items() if any(st != "pending" for st, _ in s.values())]
     if existing and not resume:
         raise SystemExit(f"Trials already exist in {run_dir} for {existing}. "
                          "Use --resume to continue without repeating completed trials.")
 
-    spent = spent_usd(run_dir)
     log(f"Experiment:   {experiment_id}")
     log(f"Model config: {cfg_id}  ({cfg['adapter']}: {cfg['model']}, effort={cfg['inference']['effort']}, "
-        f"thinking={cfg['inference']['thinking']['type']}, max_tokens={cfg['inference']['max_tokens']})")
+        f"thinking={cfg['inference']['thinking']['type']}, max_tokens={cfg['inference']['max_tokens']}, "
+        f"preprocessing v{cfg['preprocessing']['version']})")
     log(f"Results dir:  {run_dir}")
-    for image_id, why in report["skipped_images"]:
-        log(f"  SKIP {image_id}: {why} (complete the manifest, or pass --allow-unknown-metadata)")
+    log(f"Ledger:       {ledger.path}")
 
-    plan, total_worst = [], 0.0
-    log(f"\n{'image_id':<28}{'done':>6}{'to run':>8}{'worst-case/trial':>18}")
-    for row in runnable:
+    plan, total_worst, max_worst, max_input = [], 0.0, 0.0, 0
+    log(f"\n{'image_id':<28}{'done':>6}{'to run':>8}{'worst-case/trial':>18}  status")
+    for row in rows:
+        image_id = row["image_id"]
         prompt = bg.build_prompt(row["site"], row["week"], row["condition"])
-        worst = worst_case_usd(adapter, prompt, observed_input_tokens(run_dir, row["image_id"]))
-        todo = [t for t, (st, _) in states[row["image_id"]].items() if st != "done"]
-        done = runs - len(todo)
-        plan.append((row, todo))
+        observed = observed_input_tokens(run_dir, image_id)
+        input_est = observed or adapter.estimate_input_tokens(prompt, expected_image_tokens(row))
+        worst = worst_case_usd(adapter, prompt, observed, expected_image_tokens(row))
+        todo = [t for t, (st, _) in states[image_id].items() if st != "done"]
+        ready = not blockers[image_id]
+        plan.append((row, todo, ready))
         total_worst += worst * len(todo)
-        log(f"{row['image_id']:<28}{done:>6}{len(todo):>8}{'$' + format(worst, '.4f'):>18}")
-    n_todo = sum(len(t) for _, t in plan)
-    log(f"\nTrials to run: {n_todo}. Already spent (recorded): ${spent:.4f}.")
-    log(f"Worst-case cost if every remaining trial used all {adapter.max_output_tokens()} output tokens: "
-        f"${total_worst:.2f}")
-    if max_usd is not None:
-        log(f"Budget limit: ${max_usd:.2f} (remaining ${max_usd - spent:.4f}). A trial starts only if "
-            "spent + its worst-case cost stays within the limit.")
+        max_worst, max_input = max(max_worst, worst), max(max_input, input_est)
+        status = "ready" if ready else "BLOCKED: " + "; ".join(blockers[image_id])
+        log(f"{image_id:<28}{runs - len(todo):>6}{len(todo):>8}{'$' + format(worst, '.4f'):>18}  {status}")
+
+    n_todo = sum(len(t) for _, t, ready in plan if ready)
+    n_blocked = sum(len(t) for _, t, ready in plan if not ready)
     report["planned_trials"] = n_todo
-    if runnable:
-        check_path_lengths(run_dir, [r["image_id"] for r in runnable])
+    report["blocked_trials"] = n_blocked
+    log(f"\nTrials to run now: {n_todo}. Blocked until metadata is confirmed: {n_blocked}.")
+    if n_blocked:
+        log("  Blocked images need their site/week/condition known and removed from needs_review in the "
+            "manifest (or --allow-unknown-metadata, which sends them to the prompt as they stand).")
+    log(f"Worst case if every outstanding trial used all {adapter.max_output_tokens()} output tokens: "
+        f"${total_worst:.2f}")
+
+    unreconciled = [a for a in all_attempts(run_dir) if attempt_key(a) not in ledger.by_attempt()["finals"]]
+    ledger_now = ledger.summary()
+    pending_disk = sum(float(a.get("estimated_cost_usd") or a.get("pre_request_worst_case_usd") or 0)
+                       for a in unreconciled)
+    for line in ledger_report(ledger_now, max_usd):
+        log(line)
+    if pending_disk:
+        log(f"  plus up to ${pending_disk:.4f} from on-disk attempts not yet in the ledger "
+            "(added on the next --execute)")
+    log(f"  This model config's own records: ${spent_usd(run_dir):.4f}")
+
+    if max_usd is not None and n_todo + n_blocked:
+        remaining = max_usd - ledger_now["total_usd"] - pending_disk
+        total = n_todo + n_blocked
+        log(f"\nProjection for {total} outstanding trials with ${remaining:.2f} remaining. A trial starts only "
+            f"if spent + ${max_worst:.4f} (worst case) <= ${max_usd:.2f}. Actual output tokens per trial are "
+            "unknown until the first trial; these scenarios are illustrative:")
+        for out_tokens in (5_000, 10_000, 20_000, adapter.max_output_tokens()):
+            per_trial = adapter.cost_usd({"input_tokens": max_input, "output_tokens": out_tokens})
+            n = min(affordable_trials(remaining, max_worst, per_trial), total)
+            log(f"  {out_tokens:>6} output tokens/trial (${per_trial:.4f} each): about {n} of {total} trials")
+
+    active_pause, ack_ns = pause_state(run_dir)
+    if active_pause:
+        log(f"\nPAUSED since {active_pause['created_utc']}: {active_pause['reason']}")
+        log("  Review the listed records, then continue with --resume --acknowledge-pause.")
+
+    if rows:
+        check_path_lengths(run_dir, [r["image_id"] for r in rows])
 
     if dry_run:
         log("\nDry run: no API requests made, nothing written.")
         return report
     if max_usd is None:
         raise SystemExit("--max-usd is required with --execute")
+    if active_pause:
+        if not acknowledge_paused:
+            report["stopped"] = f"paused: {active_pause['reason']} (continue with --acknowledge-pause)"
+            log(f"\nSTOPPED: {report['stopped']}")
+            return report
+        acknowledge_pause(run_dir)
+        _, ack_ns = pause_state(run_dir)
+        log("\nPause acknowledged; the consecutive-outcome count starts again from zero.")
     if n_todo == 0:
-        log("\nNothing to run: all selected trials are complete.")
+        log("\nNothing to run: no ready trials outstanding.")
         aggregate(exp_dir)
         return report
 
@@ -681,25 +975,30 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
             snap.parent.mkdir(exist_ok=True)
             shutil.copyfile(manifest_path, snap)
 
+    ledger.reconcile(all_attempts(run_dir))
+    spent = ledger.summary()["total_usd"]
+    streak = nonsuccess_streak(run_dir, ack_ns)
     consecutive_failed = 0
     try:
-        for row, todo in plan:
-            if not todo:
+        for row, todo, ready in plan:
+            if not todo or not ready:
                 continue
             image_id = row["image_id"]
             image = prepare_image(row)
             check_consistency(image, image_attempts(run_dir, image_id), image_id)
             log(f"\n{image_id}: upload {image['meta']['upload_width']}x{image['meta']['upload_height']} "
-                f"(from {image['meta']['original_width']}x{image['meta']['original_height']})")
+                f"({image['meta']['upload_visual_tokens']} visual tokens; "
+                f"from {image['meta']['original_width']}x{image['meta']['original_height']})")
             for trial in todo:
                 for _ in range(max_attempts):
-                    worst = worst_case_usd(adapter, image["prompt"], observed_input_tokens(run_dir, image_id))
+                    worst = worst_case_usd(adapter, image["prompt"], observed_input_tokens(run_dir, image_id),
+                                           image["meta"]["upload_visual_tokens"])
                     if spent + worst > max_usd:
                         raise BudgetStop(f"next request worst-case ${worst:.4f} would exceed the remaining "
                                          f"budget ${max_usd - spent:.4f} (limit ${max_usd:.2f})")
                     rec = run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image,
-                                      run_dir, worst, manifest_sha)
-                    spent += rec["estimated_cost_usd"]
+                                      run_dir, worst, manifest_sha, ledger)
+                    spent = ledger.summary()["total_usd"]
                     report["trials_run"] += 1
                     usage = rec["usage"] or {}
                     log(f"  trial {trial:02d} attempt {rec['attempt']:02d}: {rec['status']:<10} "
@@ -711,6 +1010,11 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
                         break
                 if rec["status"] in TERMINAL:
                     consecutive_failed = 0
+                    streak = streak + [rec] if rec["status"] in NONSUCCESS_TERMINAL else []
+                    if pause_after and len(streak) >= pause_after:
+                        write_pause(run_dir, streak, pause_after, exp_dir)
+                        raise PauseStop(f"{len(streak)} consecutive trials ended invalid/refusal/max_tokens "
+                                        f"({', '.join(r['status'] for r in streak)})")
                 else:
                     consecutive_failed += 1
                     if consecutive_failed >= MAX_CONSECUTIVE_FAILED_TRIALS:
@@ -718,6 +1022,8 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
                                                 "stopping. Re-run with --resume later.")
     except BudgetStop as e:
         report["stopped"] = f"budget: {e}"
+    except PauseStop as e:
+        report["stopped"] = f"paused: {e}"
     except FatalAdapterError as e:
         report["stopped"] = f"error: {e}"
     except ConsistencyError as e:
@@ -729,16 +1035,22 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
 
     report["spent_usd"] = spent
     remaining = {}
-    for row, _ in plan:
+    for row, _, _ in plan:
         left = [t for t in range(1, runs + 1)
                 if trial_state(run_dir / row["image_id"] / f"trial_{t:02d}")[0] != "done"]
         if left:
             remaining[row["image_id"]] = left
     report["incomplete"] = remaining
 
-    log(f"\nRecorded spend for this model config: ${spent:.4f} of ${max_usd:.2f}")
+    log("")
+    for line in ledger_report(ledger.summary(), max_usd):
+        log(line)
+    log(f"  This model config's own records: ${spent_usd(run_dir):.4f}")
     if report["stopped"]:
         log(f"STOPPED: {report['stopped']}")
+        if report["stopped"].startswith("paused"):
+            log(f"  All trials are kept as recorded. Details: {run_dir / PAUSE_FILE}")
+            log("  Inspect the listed records. To continue deliberately: --resume --acknowledge-pause")
     if remaining:
         log("Incomplete images (trials not yet complete):")
         for image_id, left in remaining.items():
@@ -754,19 +1066,27 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--manifest", type=Path, required=True)
     ap.add_argument("--image-ids", help="Comma-separated image_ids to run (default: every manifest row)")
+    ap.add_argument("--collection", help="Only manifest rows with this collection (e.g. low_altitude)")
     ap.add_argument("--runs", type=int, default=10, help="Trials per image (default 10)")
-    ap.add_argument("--max-usd", type=float, help="Cumulative spending limit for this model config")
+    ap.add_argument("--max-usd", type=float,
+                    help="Spending limit across ALL experiments in this project's ledger for this API account")
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="Show the plan and cost bounds; no API calls")
     mode.add_argument("--execute", action="store_true", help="Make the API requests (paid unless --mock)")
     ap.add_argument("--resume", action="store_true", help="Continue; completed trials are skipped")
-    ap.add_argument("--output-dir", type=Path, default=ROOT / "benchmark_results")
+    ap.add_argument("--output-dir", type=Path,
+                    help=f"Default {PRODUCTION_OUTPUT_DIR.name}/ (or {MOCK_OUTPUT_DIR.name}/ with --mock)")
     ap.add_argument("--experiment-id", default="tree_count_consistency_v1")
     ap.add_argument("--model", default="M08", help="Model code (only M08 is implemented)")
     ap.add_argument("--max-attempts", type=int, default=2,
                     help="Attempts per trial per session after API errors (default 2)")
+    ap.add_argument("--pause-after", type=int, default=DEFAULT_PAUSE_AFTER,
+                    help="Pause after this many consecutive invalid/refusal/max_tokens trials (0 = never)")
+    ap.add_argument("--acknowledge-pause", action="store_true",
+                    help="Continue past a recorded pause after reviewing the flagged trials")
     ap.add_argument("--allow-unknown-metadata", action="store_true",
-                    help="Run images whose site/week/condition are UNKNOWN (they enter the prompt as-is)")
+                    help="Run images whose site/week/condition are UNKNOWN or unconfirmed "
+                         "(values enter the prompt as they stand)")
     ap.add_argument("--image-root", type=Path, default=ROOT, help="Base for manifest image_path values")
     ap.add_argument("--mock", action="store_true", help="Use the offline mock adapter (no network, no cost)")
     ap.add_argument("--mock-interrupt-after", type=int,
@@ -779,19 +1099,32 @@ def main(argv=None):
         ap.error("--max-attempts must be at least 1")
     if args.mock_interrupt_after is not None and not args.mock:
         ap.error("--mock-interrupt-after requires --mock")
+    if args.pause_after < 0:
+        ap.error("--pause-after must be 0 or more")
+
+    output_dir = args.output_dir or (MOCK_OUTPUT_DIR if args.mock else PRODUCTION_OUTPUT_DIR)
+    if args.mock:
+        prod = PRODUCTION_OUTPUT_DIR.resolve()
+        out = output_dir.resolve()
+        if out == prod or prod in out.parents:
+            ap.error(f"--mock results may not be written inside {PRODUCTION_OUTPUT_DIR}")
 
     image_ids = [s.strip() for s in args.image_ids.split(",") if s.strip()] if args.image_ids else None
-    rows = load_manifest(args.manifest, args.image_root, image_ids)
+    rows = load_manifest(args.manifest, args.image_root, image_ids, args.collection)
 
     kwargs = {"interrupt_after": args.mock_interrupt_after} if args.mock else {}
     adapter = get_adapter(args.model, mock=args.mock, **kwargs)
     experiment_id = f"MOCK_{args.experiment_id}" if args.mock else args.experiment_id
+    # Real spend goes to one project-wide ledger per API account, whatever the output dir.
+    ledger_path = (output_dir / "mock_spend_ledger.jsonl" if args.mock
+                   else LEDGER_DIR / f"{adapter.billing_account}_ledger.jsonl")
 
-    report = run_benchmark(rows, adapter, args.output_dir, experiment_id, runs=args.runs,
+    report = run_benchmark(rows, adapter, output_dir, experiment_id, runs=args.runs,
                            max_usd=args.max_usd, resume=args.resume, dry_run=args.dry_run,
                            max_attempts=args.max_attempts,
                            allow_unknown_metadata=args.allow_unknown_metadata,
-                           manifest_path=args.manifest)
+                           manifest_path=args.manifest, ledger_path=ledger_path,
+                           pause_after=args.pause_after, acknowledge_paused=args.acknowledge_pause)
     if report.get("stopped") == "interrupted by user":
         sys.exit(130)
 
