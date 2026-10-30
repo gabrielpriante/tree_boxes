@@ -34,6 +34,7 @@ from pathlib import Path
 from PIL import Image
 
 import box_generation as bg
+import evaluation_accuracy as ea
 import evaluation_core as ec
 
 ROOT = Path(__file__).resolve().parent
@@ -695,7 +696,13 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
 
     # -- human review summary and (gated) accuracy
     review_summary = summarize_review(units, results, review, template)
-    accuracy_rows, accuracy_notes = [], []
+    accuracy_rows, accuracy_notes, accuracy_results = [], [], []
+    unit_of = {}
+    for row in template:
+        uids = row["detection_uids"] if isinstance(row["detection_uids"], list) else [row["detection_uids"]]
+        label = review["labels"].get(row["review_unit_id"], {}).get("label", "")
+        for uid in uids:
+            unit_of[uid] = (row["review_unit_id"], label)
     for u in units:
         status, ref_sha = review["status"].get(u.image_id, ("NONE", ""))
         ref = reference_set(u, review)
@@ -706,16 +713,16 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
             raise InputError(f"reference_status.csv: {u.image_id} hash does not match the evaluated image")
         if ref is None:
             ref = ec.DetectionSet("human_reference", u.image_id, u.image_sha256, u.width, u.height, None, ())
-        for t in thresholds:
-            for s in sorted(u.sets, key=lambda s: s.trial):
-                a = ec.accuracy_vs_reference(s, ref, status, t)
-                accuracy_rows.append({"experiment_id": u.experiment_id, "image_id": u.image_id,
-                                      "iou_threshold": ec.threshold_label(t), "trial": s.trial,
-                                      "n_predictions": len(s.detections), "n_reference": len(ref.detections),
-                                      **{k: a[k] for k in ("true_positives", "false_positives", "false_negatives",
-                                                           "precision", "recall", "f1", "mean_iou_tp")}})
-    if accuracy_rows:
+        groups050 = {uid: g.group_id for uid, g in group_of[(u.key, REVIEW_THRESHOLD)].items()}
+        acc = ea.evaluate_accuracy(u, ref, status, thresholds, groups050, unit_of)
+        accuracy_results.append((u, acc))
+        accuracy_rows += acc.trial_rows
+    if accuracy_results:
         write_csv(output_dir / "accuracy_vs_reference.csv", list(accuracy_rows[0]), accuracy_rows)
+        for name, attr in (("accuracy_summary.csv", "summary_rows"), ("reference_detection_frequency.csv", "reference_rows"),
+                           ("prediction_outcomes.csv", "outcome_rows")):
+            rows = [r for _, acc in accuracy_results for r in getattr(acc, attr)]
+            write_csv(output_dir / name, list(rows[0]), rows)
 
     # -- altitude-series organisation
     alt_rows = altitude_series_rows(manifest, image_root, units) if manifest.exists() else []
@@ -737,6 +744,8 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
                 status = review["status"].get(image_id, ("NONE", ""))[0]
                 ep.reference_images(u.image_path, image_id, rows, output_dir,
                                     "COMPLETE" if status == ec.REFERENCE_COMPLETE else f"not approved ({status})")
+        for u, acc in accuracy_results:
+            figure_paths[u.key] = figure_paths.get(u.key, []) + ep.accuracy_figures(u, acc, output_dir)
 
     config = {
         "algorithm_version": ec.ALGORITHM_VERSION,
@@ -761,11 +770,37 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
     report = build_report(units, results, stats, inv_rows, review, review_summary, accuracy_rows, accuracy_notes,
                           alt_rows, figure_paths, output_dir, created)
     (output_dir / "evaluation_report.md").write_text(report, encoding="utf-8")
+    if accuracy_results:
+        (output_dir / "accuracy_report.md").write_text(
+            accuracy_report(accuracy_results, thresholds, review_dir, review, figure_paths, output_dir), encoding="utf-8")
     if created:
         log(f"Created in {review_dir} (never overwritten): {', '.join(created)}")
     log(f"Wrote {output_dir}")
     return {"units": units, "results": results, "stats": stats, "review": review, "figures": figure_paths,
-            "accuracy_rows": accuracy_rows, "created_review_files": created}
+            "accuracy_rows": accuracy_rows, "accuracy": accuracy_results, "created_review_files": created}
+
+
+def accuracy_report(accuracy_results, thresholds, review_dir: Path, review: dict, figure_paths: dict, out: Path) -> str:
+    status_rows = {r["image_id"]: r for r in read_csv(review_dir / "reference_status.csv")}
+    labels = {uid: (v["label"], v.get("note", "")) for uid, v in review["labels"].items()}
+    L = ["# Detection accuracy against the human reference\n",
+         f"Algorithm version {ec.ALGORITHM_VERSION}. Offline; no API requests. Computed only for images whose "
+         "human reference is marked COMPLETE in `human_review/reference_status.csv`. Repeatability results are in "
+         "`evaluation_report.md`. Inputs, hashes and software versions are in `evaluation_config.json`.\n",
+         "Files: `accuracy_vs_reference.csv` (per trial), `accuracy_summary.csv` (across trials), "
+         "`reference_detection_frequency.csv` (per reference tree), `prediction_outcomes.csv` (per predicted box, "
+         "with its IoU 0.50 group, review unit and human label).\n"]
+    for u, acc in accuracy_results:
+        s = status_rows.get(u.image_id, {})
+        note = f"Approved by {s.get('annotator') or '?'} on {s.get('status_date') or '?'}."
+        L.append(ea.report_section(acc, thresholds, note, labels))
+        paths = [p for p in figure_paths.get(u.key, []) if p.name[:2] in ("F_", "G_", "H_", "I_", "J_")]
+        if paths:
+            L.append("### Figures\n")
+            L += [f"- `{rel(p, out)}`" for p in paths]
+            L.append("")
+    L.append(ea.LIMITATIONS)
+    return "\n".join(L) + "\n"
 
 
 def _coverage(manifest: Path, image_id: str) -> str:
@@ -917,8 +952,8 @@ def build_report(units, results, stats, inv_rows, review, rs, accuracy_rows, acc
         w("No human labels yet.\n")
     for key, (n_ref, missed) in rs["missed"].items():
         w(f"- {key}: {len(missed)} of {n_ref} human reference trees were not detected in any trial at IoU ≥ 0.50.")
-    w("\n**Accuracy against a human reference:** " + ("computed, see `accuracy_vs_reference.csv`." if accuracy_rows
-      else "not computed. No image has a COMPLETE human reference annotation."))
+    w("\n**Accuracy against a human reference:** " + ("computed for images with a COMPLETE reference; see "
+      "`accuracy_report.md`." if accuracy_rows else "not computed. No image has a COMPLETE human reference annotation."))
     for n in accuracy_notes:
         w(f"- {n}")
     w("\nPreliminary observations reported by the project lead (free text; not machine-readable labels and "
