@@ -227,7 +227,7 @@ class TestSeparationOfMetrics(unittest.TestCase):
 
 # ------------------------------------------------------------------ end to end on mock benchmark output
 
-class EvaluationRun(unittest.TestCase):
+class MockBenchmark(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         rows = []
@@ -258,6 +258,8 @@ class EvaluationRun(unittest.TestCase):
         with (self.tmp / out / name).open(newline="", encoding="utf-8") as f:
             return list(csv.DictReader(f))
 
+
+class EvaluationRun(MockBenchmark):
     def test_outputs_and_pair_counts(self):
         res = self.evaluate()
         for name in ("pairwise_iou.csv", "iou_summary.csv", "detection_persistence.csv", "manual_review_template.csv",
@@ -381,6 +383,66 @@ class EvaluationRun(unittest.TestCase):
         template = self.read("manual_review_template.csv")
         self.assertTrue(all((self.tmp / "eval" / r["crop_path"]).exists() for r in template))
         self.assertEqual(len(list((self.tmp / "eval" / "review").glob("contact_sheet_*.png"))), 2)
+
+
+class ReviewValidation(MockBenchmark):
+    """manual_review.csv is hand-edited (often in Excel); bad edits must stop the evaluation, not be rewritten."""
+
+    def edit_review(self, change):
+        path = self.review / "manual_review.csv"
+        with path.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        change(rows)
+        with path.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0]))
+            w.writeheader()
+            w.writerows(rows)
+        return path.read_bytes()
+
+    def assert_rejected(self, change, text):
+        self.evaluate()
+        report_before = (self.tmp / "eval" / "evaluation_report.md").read_bytes()
+        content = self.edit_review(change)
+        with self.assertRaises(ev.InputError) as cm:
+            self.evaluate()
+        self.assertIn(text, str(cm.exception))
+        self.assertEqual((self.review / "manual_review.csv").read_bytes(), content)        # not rewritten
+        self.assertEqual((self.tmp / "eval" / "evaluation_report.md").read_bytes(), report_before)  # outputs kept
+
+    def test_spreadsheet_date_conversion_detected(self):
+        def to_date(rows):
+            r = next(r for r in rows if r["persistence_bin"] == "2-3")
+            r["persistence_bin"] = "3-Feb"
+        self.assert_rejected(to_date, "converted it to a date")
+
+    def test_category_must_agree_with_n_trials(self):
+        def wrong(rows):
+            r = next(r for r in rows if r["n_trials"] == "1")
+            r["persistence_bin"] = "all 4"
+        self.assert_rejected(wrong, "should be '1-1' for n_trials=1")
+
+    def test_trials_detected_must_agree_with_count(self):
+        def wrong(rows):
+            r = next(r for r in rows if r["n_trials"] == "1")
+            r["trials_detected"] = r["trials_detected"] + ";4" if r["trials_detected"] != "4" else "3;4"
+        self.assert_rejected(wrong, "trials_detected lists 2 distinct trials but n_trials is 1")
+
+    def test_generated_columns_must_not_change(self):
+        def wrong(rows):
+            rows[0]["crop_path"] = "elsewhere.jpg"
+        self.assert_rejected(wrong, "generated column(s) differ from the evaluation: crop_path")
+
+    def test_human_fields_may_change(self):
+        self.evaluate()
+        def label(rows):
+            rows[0].update(human_label="TREE", human_note="note, with comma", reviewer="R", review_date="10/30/2026")
+        content = self.edit_review(label)
+        res = ev.run(self.results, None, self.tmp / "unused", self.review, self.manifest, self.tmp,
+                     figures=False, validate_only=True, log=quiet)
+        self.assertEqual(res["review_errors"], [])
+        self.assertFalse((self.tmp / "unused").exists())   # validation alone writes nothing
+        self.evaluate()
+        self.assertEqual((self.review / "manual_review.csv").read_bytes(), content)
 
 
 @unittest.skipUnless((REPO / "benchmark_results" / "lowalt_pilot_pt02_64m_v1").exists(), "pilot results not present")
