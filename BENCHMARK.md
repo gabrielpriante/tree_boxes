@@ -231,3 +231,8 @@ A new adapter implements `config()`, `max_output_tokens()`, `cost_usd()` and `ru
 trial numbering, folder layout and CSVs. Deterministic models such as DeepForest may produce identical results
 across trials; that's expected and should not be "fixed" by adding randomness. No DeepForest outputs exist in
 this repository (`deepforest_images/` is empty), so none were touched.
+
+## Evaluation
+
+Offline consistency evaluation, human review and the across-altitude design are documented in
+`EVALUATION.md` (`python evaluate_consistency.py`; no API access).
