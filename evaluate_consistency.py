@@ -292,6 +292,34 @@ missing and never overwrites it. Everything in `evaluation_results/` is regenera
 created. If the evaluation algorithm or inputs change, review unit ids may change; the evaluation
 report lists any labelled id it no longer recognises. New units are not added automatically:
 copy rows over from the template if needed.
+
+## Which threshold the labels refer to
+
+Review units are the persistence groups at **IoU >= 0.50** (`group_id_iou050`). A label applies to that
+unit's detections (`detection_uids`), not to any group id at IoU 0.75 or 1.00: the same id at another
+threshold is generally a different set of detections. Labels are never transferred between thresholds;
+any such transfer would need an explicit detection-level mapping (the `detection_uids` column and
+`evaluation_results/detections.csv` provide the ids for that).
+
+## Editing in Excel without corrupting the file
+
+Opening the CSV by double-clicking lets Excel convert values: `8-9`, `5-7`, `1-4` in `persistence_bin`
+become dates (`9-Aug`, `7-May`, `4-Jan`), and the change is written back when the file is saved.
+Only the `human_label`, `human_note`, `reviewer` and `review_date` columns should ever change.
+
+1. Do not double-click the CSV. In Excel: **Data > From Text/CSV**, choose the file, click
+   **Transform Data**, select all columns, set **Data Type > Text**, then **Close & Load**.
+   (Or **Data > Get Data > Legacy Wizards > From Text (Legacy)**: Delimited, Comma, then mark at least
+   `persistence_bin`, `trials_detected`, `n_trials` and `review_date` as **Text** in the last step.)
+2. Edit only the four human columns. Save as **CSV UTF-8 (Comma delimited)** to `manual_review.csv`.
+3. Close the file in Excel (Excel locks open files, so scripts cannot read or write them).
+4. Run `python evaluate_consistency.py --validate-review`. It writes nothing; it reports any
+   `persistence_bin` that does not match `n_trials` (flagging date-like values), any `trials_detected` that
+   disagrees with `n_trials`, duplicate ids, and any generated column that no longer matches the evaluation.
+   A full evaluation run performs the same check first and stops without writing outputs if it fails.
+   The check never rewrites your file.
+
+A text editor (VS Code) or LibreOffice Calc with the columns imported as Text avoids the problem entirely.
 """
 
 
@@ -313,6 +341,56 @@ def ensure_review_files(review_dir: Path, template_rows: list, units: list) -> l
             make(p)
             created.append(name)
     return created
+
+
+EXCEL_DATE_RE = re.compile(r"^(\d{1,2}-[A-Za-z]{3}|[A-Za-z]{3}-\d{1,2})$")  # e.g. 9-Aug, Aug-9
+HUMAN_FIELDS = {"human_label", "human_note", "reviewer", "review_date"}
+
+
+def validate_review_file(path: Path, template: list, n_trials_by_image: dict) -> list:
+    """Problems that make a hand-edited manual_review.csv unsafe to use. Reports; never rewrites.
+
+    Checks every row's persistence_bin is a valid category that agrees with n_trials (catching spreadsheet
+    date conversion such as '8-9' -> '9-Aug'), that trials_detected lists n_trials distinct trials, that ids
+    are unique, and that the generated (non-human) columns still equal the evaluation's template."""
+    if not path.exists():
+        return []
+    errors = []
+    by_id = {r["review_unit_id"]: {k: str(_cell(v)) for k, v in r.items()} for r in template}
+    rows = read_csv(path)
+    with open(path, newline="", encoding="utf-8") as f:
+        header = next(csv.reader(f), [])
+    missing = [c for c in REVIEW_FIELDS if c not in header]
+    if missing:
+        return [f"missing columns: {', '.join(missing)}"]
+    seen = set()
+    for n, r in enumerate(rows, start=2):
+        uid = r["review_unit_id"]
+        where = f"line {n} ({uid})"
+        if uid in seen:
+            errors.append(f"{where}: duplicate review_unit_id")
+        seen.add(uid)
+        try:
+            k = int(r["n_trials"])
+            trials = [int(t) for t in r["trials_detected"].split(";")]
+        except ValueError:
+            errors.append(f"{where}: unreadable n_trials {r['n_trials']!r} / trials_detected {r['trials_detected']!r}")
+            continue
+        if len(trials) != k or len(set(trials)) != k:
+            errors.append(f"{where}: trials_detected lists {len(set(trials))} distinct trials but n_trials is {k}")
+        total = n_trials_by_image.get((r["experiment_id"], r["image_id"]))
+        b = r["persistence_bin"]
+        if total is not None:
+            expected = ec.persistence_bin(k, total) if 1 <= k <= total else None
+            if b != expected:
+                hint = " (looks like a spreadsheet converted it to a date)" if EXCEL_DATE_RE.match(b.strip()) else ""
+                errors.append(f"{where}: persistence_bin {b!r} should be {expected!r} for n_trials={k}{hint}")
+        t = by_id.get(uid)
+        if t is not None:
+            changed = [c for c in REVIEW_FIELDS if c not in HUMAN_FIELDS and c != "persistence_bin" and r[c] != t[c]]
+            if changed:
+                errors.append(f"{where}: generated column(s) differ from the evaluation: {', '.join(changed)}")
+    return errors
 
 
 def load_review(review_dir: Path) -> dict:
@@ -450,7 +528,7 @@ def prepare_output_dir(out: Path) -> None:
 
 def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OUTPUT_DIR,
         review_dir: Path = REVIEW_DIR, manifest: Path = MANIFEST, image_root: Path = ROOT,
-        figures: bool = True, full_res_maps: bool = True, log=print) -> dict:
+        figures: bool = True, full_res_maps: bool = True, validate_only: bool = False, log=print) -> dict:
     thresholds = ec.THRESHOLDS
     if output_dir.resolve() == results_dir.resolve() or results_dir.resolve() in output_dir.resolve().parents:
         raise InputError("the evaluation may not write inside the benchmark results directory")
@@ -458,7 +536,6 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
     units = [u for d in discover_experiments(results_dir, experiments) for u in load_experiment(d, image_root, base)]
     if not units:
         raise InputError(f"no successful trials found under {results_dir}")
-    prepare_output_dir(output_dir)
     log(f"Loaded {len(units)} image/experiment unit(s): " + ", ".join(f"{u.key} ({u.n_trials} trials)" for u in units))
 
     results = {u.key: evaluate_unit(u, thresholds) for u in units}
@@ -490,6 +567,18 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
                                      "n_detections": 1, "detection_uids": d.uid, "median_box_px": box_str(d.box),
                                      "crop_path": crop.as_posix()})
                     unit_crops[uid] = (u, g, d, crop)
+
+    # Check hand-edited review data before anything is written or used.
+    review_errors = validate_review_file(review_dir / "manual_review.csv", template,
+                                         {(u.experiment_id, u.image_id): u.n_trials for u in units})
+    if review_errors:
+        raise InputError("human_review/manual_review.csv failed validation; it was not modified and no outputs "
+                         "were written:\n  " + "\n  ".join(review_errors))
+    if validate_only:
+        log(f"{review_dir / 'manual_review.csv'}: OK")
+        return {"units": units, "review_errors": []}
+
+    prepare_output_dir(output_dir)
     write_csv(output_dir / "manual_review_template.csv", REVIEW_FIELDS, template)
     write_csv(output_dir / "reference_boxes_template.csv", REFERENCE_FIELDS, [])
     created = ensure_review_files(review_dir, template, units)
@@ -863,10 +952,13 @@ def main(argv=None):
     ap.add_argument("--image-root", type=Path, default=ROOT)
     ap.add_argument("--no-figures", action="store_true", help="Skip figures, crops and contact sheets")
     ap.add_argument("--no-full-res-maps", action="store_true", help="Skip the full-resolution persistence map JPEGs")
+    ap.add_argument("--validate-review", action="store_true",
+                    help="Only check human_review/manual_review.csv against the evaluation; write nothing")
     args = ap.parse_args(argv)
     try:
         run(args.results_dir, args.experiments, args.output_dir, args.review_dir, args.manifest, args.image_root,
-            figures=not args.no_figures, full_res_maps=not args.no_full_res_maps)
+            figures=not args.no_figures, full_res_maps=not args.no_full_res_maps,
+            validate_only=args.validate_review)
     except InputError as e:
         sys.exit(f"ERROR: {e}")
 
