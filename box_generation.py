@@ -22,6 +22,7 @@ import base64
 import csv
 import io
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -30,9 +31,16 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 MODEL = "claude-opus-5-5"
 EFFORT = "high"
 MAX_TOKENS = 32000
-MAX_IMAGE_BYTES = 5 * 1024 * 1024  # API per-image limit for base64 uploads
-MAX_UPLOAD_EDGE = 2576             # longest edge sent to the API
+MAX_IMAGE_BYTES = 5 * 1024 * 1024  # stricter than the API's 10 MB per-image limit
 JPEG_QUALITIES = (95, 90, 85, 80, 70)  # tried in order until under MAX_IMAGE_BYTES
+
+# High-resolution vision tier (Claude 4.7 and later, including Opus 5.5). The API
+# downsizes any image over either limit, so images are resized locally to exactly
+# the size the API would use. See platform.claude.com/docs/en/build-with-claude/vision-coordinates
+MAX_UPLOAD_EDGE = 2576     # max long edge, px
+MAX_VISUAL_TOKENS = 4784   # max visual tokens; one token per 28x28 px patch
+PATCH_PX = 28
+PREPROCESSING_VERSION = 2  # v1: long edge 2576 only (API then downsized further)
 
 PROMPT_TEMPLATE = """# Tree Detection Instructions
 
@@ -178,18 +186,50 @@ def load_image(path: Path) -> Image.Image:
     return img.convert("RGB")
 
 
+def count_image_tokens(width: int, height: int) -> int:
+    """Visual tokens the API charges for an image: one per 28x28 px patch."""
+    return math.ceil(width / PATCH_PX) * math.ceil(height / PATCH_PX)
+
+
+def api_resized_size(width: int, height: int, max_edge: int = MAX_UPLOAD_EDGE,
+                     max_tokens: int = MAX_VISUAL_TOKENS) -> tuple:
+    """Largest aspect-preserving size the API accepts without downsizing.
+    Anthropic's documented reference implementation (vision-coordinates guide)."""
+
+    def fits(w, h):
+        return (math.ceil(w / PATCH_PX) * PATCH_PX <= max_edge
+                and math.ceil(h / PATCH_PX) * PATCH_PX <= max_edge
+                and count_image_tokens(w, h) <= max_tokens)
+
+    if fits(width, height):
+        return (width, height)
+    if height > width:
+        resized_h, resized_w = api_resized_size(height, width, max_edge, max_tokens)
+        return (resized_w, resized_h)
+    aspect_ratio = width / height
+    lo, hi = 1, width  # lo always fits; hi never fits
+    while lo + 1 < hi:
+        mid = (lo + hi) // 2
+        if fits(mid, max(round(mid / aspect_ratio), 1)):
+            lo = mid
+        else:
+            hi = mid
+    return (lo, max(round(lo / aspect_ratio), 1))
+
+
 def prepare_upload(img: Image.Image) -> tuple:
-    """JPEG encode, downscaling if needed to stay under API limits.
-    Normalized 0 to 1000 coordinates are scale invariant, so this is safe.
+    """Resize to the exact size the API would use (so it performs no further resizing),
+    then JPEG encode. Normalized 0 to 1000 coordinates are scale invariant, so boxes
+    still map onto the original image.
     Returns (jpeg_bytes, info) where info records the upload dimensions and quality."""
-    work = img.copy()
-    if max(work.size) > MAX_UPLOAD_EDGE:
-        work.thumbnail((MAX_UPLOAD_EDGE, MAX_UPLOAD_EDGE), Image.LANCZOS)
+    target = api_resized_size(img.width, img.height)
+    work = img.resize(target, Image.LANCZOS) if target != img.size else img.copy()
     for quality in JPEG_QUALITIES:
         buf = io.BytesIO()
         work.save(buf, format="JPEG", quality=quality)
         if buf.tell() <= MAX_IMAGE_BYTES:
             info = {"width": work.width, "height": work.height,
+                    "visual_tokens": count_image_tokens(work.width, work.height),
                     "jpeg_quality": quality, "bytes": buf.tell()}
             return buf.getvalue(), info
     raise ValueError("Could not encode image under the 5 MB API limit.")
@@ -221,6 +261,9 @@ def build_request(image_b64: str, prompt: str) -> dict:
                             "media_type": "image/jpeg",
                             "data": image_b64,
                         },
+                        # Reject (400) instead of silently downsizing if the image
+                        # ever exceeds the model's limits.
+                        "transformations": {"oversized_image": "error"},
                     },
                     {"type": "text", "text": prompt},
                 ],
