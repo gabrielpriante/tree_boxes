@@ -31,9 +31,8 @@ CLAUDE_OPUS_5_5_PRICING = {
     "source": "Anthropic API list pricing for claude-opus-5-5 (verified 2026-10-30)",
 }
 
-# Upper bound on image input tokens for high-resolution vision models
-# (2576 px long edge / 3.75 MP; the API downsizes anything larger).
-IMAGE_TOKEN_UPPER_BOUND = 4784
+# Upper bound on image input tokens for high-resolution vision models.
+IMAGE_TOKEN_UPPER_BOUND = bg.MAX_VISUAL_TOKENS
 # Allowance for the structured-output system prompt and message framing.
 REQUEST_OVERHEAD_TOKENS = 2000
 
@@ -70,6 +69,7 @@ def _sha256_text(s: str) -> str:
 class ModelAdapter:
     model_code = ""
     adapter_name = ""
+    billing_account = ""  # adapters that share credits share a spending ledger
     pricing = CLAUDE_OPUS_5_5_PRICING
 
     def config(self) -> dict:
@@ -86,9 +86,10 @@ class ModelAdapter:
     def max_output_tokens(self) -> int:
         raise NotImplementedError
 
-    def estimate_input_tokens(self, prompt: str) -> int:
+    def estimate_input_tokens(self, prompt: str, image_tokens: int | None = None) -> int:
         """Conservative upper bound used before any request for this image has completed."""
-        return IMAGE_TOKEN_UPPER_BOUND + math.ceil(len(prompt) / 3) + REQUEST_OVERHEAD_TOKENS
+        image = image_tokens if image_tokens is not None else IMAGE_TOKEN_UPPER_BOUND
+        return image + math.ceil(len(prompt) / 3) + REQUEST_OVERHEAD_TOKENS
 
     def cost_usd(self, usage: dict) -> float:
         p = self.pricing
@@ -119,10 +120,14 @@ def claude_config(model_code: str, adapter_name: str) -> dict:
         "output_schema_sha256": _sha256_text(json.dumps(bg.OUTPUT_SCHEMA, sort_keys=True)),
         "coordinates": "normalized 0-1000 [x_min, y_min, x_max, y_max], origin top-left",
         "preprocessing": {
+            "version": bg.PREPROCESSING_VERSION,
             "exif_transpose": True,
             "color_mode": "RGB",
             "max_upload_edge_px": bg.MAX_UPLOAD_EDGE,
-            "resize": "PIL Image.thumbnail, LANCZOS, only when larger than max edge",
+            "max_visual_tokens": bg.MAX_VISUAL_TOKENS,
+            "resize": "PIL Image.resize, LANCZOS, to the documented API target size "
+                      "(largest aspect-preserving size within both limits)",
+            "server_resize_guard": "image transformations.oversized_image = error",
             "format": "JPEG",
             "jpeg_qualities_tried": list(bg.JPEG_QUALITIES),
             "max_image_bytes": bg.MAX_IMAGE_BYTES,
@@ -135,6 +140,7 @@ class ClaudeAdapter(ModelAdapter):
 
     model_code = "M08"
     adapter_name = "anthropic-messages"
+    billing_account = "anthropic_api"
 
     # Retries for failures that occur before generation starts (not billed).
     MAX_RETRIES = 4
@@ -238,6 +244,7 @@ class MockAdapter(ModelAdapter):
 
     model_code = "M08"
     adapter_name = "mock"
+    billing_account = "mock"
 
     def __init__(self, behaviors=None, input_tokens=6500, output_tokens=9000, interrupt_after=None):
         self.behaviors = behaviors or {}
