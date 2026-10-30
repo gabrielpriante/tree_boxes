@@ -689,6 +689,7 @@ class TestManifestMetadata(BenchmarkTestCase):
         for r in rows:
             self.assertEqual((r["week"], r["condition"]), ("NOT_APPLICABLE", "ALTITUDE_TEST"))
             self.assertNotIn(r["condition"], ("BEFORE", "AFTER"))
+            self.assertFalse({"week", "condition"} & br.review_fields(r))  # confirmed 2026-10-30
             self.assertTrue(r["capture_datetime"].startswith("2026:10:24"))
             float(r["altitude_m"])
         w1 = br.load_manifest(REPO / "manifests" / "manifest.csv", REPO, image_ids=["W01_MORNING-START_PT-02"])[0]
@@ -899,6 +900,149 @@ class TestOctober24Selection(unittest.TestCase):
             self.assertFalse((tmp / "o").exists())
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _order(adapter):
+    return [(c["image_id"], c["trial"]) for c in adapter.calls]
+
+
+class TestRoundRobin(BenchmarkTestCase):
+    def test_round_robin_alternates_images_by_trial(self):
+        adapter = MockAdapter()
+        report = self.run_mock(adapter, round_robin=True)
+        expected = [(i, t) for t in range(1, 11) for i in ("IMG_A", "IMG_B")]
+        self.assertEqual(_order(adapter), expected)
+        self.assertEqual(report["order"], expected)
+        self.assertEqual(report["incomplete"], {})
+        self.assertEqual(len(self.read_csv("counts_long.csv")), 20)
+
+    def test_default_order_is_still_sequential(self):
+        adapter = MockAdapter()
+        report = self.run_mock(adapter)
+        expected = [("IMG_A", t) for t in range(1, 11)] + [("IMG_B", t) for t in range(1, 11)]
+        self.assertEqual(_order(adapter), expected)
+        self.assertEqual(report["order"], expected)
+
+    def test_same_output_structure_either_way(self):
+        seq, rr = MockAdapter(), MockAdapter()
+        self.run_mock(seq, runs=3)
+        layout = lambda: sorted(str(p.relative_to(self.exp_dir())) for p in self.exp_dir().rglob("*")
+                                if p.is_file() and "spend_ledger" not in p.name)
+        first = layout()
+        shutil.rmtree(self.out)
+        self.run_mock(rr, runs=3, round_robin=True)
+        self.assertEqual(first, layout())
+
+    def test_round_robin_resume_continues_the_cycle(self):
+        adapter = MockAdapter(interrupt_after=5)  # Ctrl+C during the 6th request: IMG_B trial 3
+        report = self.run_mock(adapter, round_robin=True)
+        self.assertEqual(report["stopped"], "interrupted by user")
+        self.assertEqual(_order(adapter), [("IMG_A", 1), ("IMG_B", 1), ("IMG_A", 2), ("IMG_B", 2),
+                                           ("IMG_A", 3), ("IMG_B", 3)])
+        self.assertEqual(report["incomplete"], {"IMG_A": list(range(4, 11)), "IMG_B": list(range(3, 11))})
+
+        resumed = MockAdapter()
+        report = self.run_mock(resumed, round_robin=True, resume=True)
+        self.assertEqual(_order(resumed)[:4], [("IMG_B", 3), ("IMG_A", 4), ("IMG_B", 4), ("IMG_A", 5)])
+        self.assertEqual(resumed.calls[0]["attempt"], 2)  # the interrupted attempt is kept, not overwritten
+        self.assertEqual(len(resumed.calls), 15)
+        self.assertEqual(report["incomplete"], {})
+        self.assertEqual(len(self.read_csv("counts_long.csv")), 20)
+
+    def test_round_robin_budget_stop_keeps_completed_trials(self):
+        adapter = MockAdapter()
+        worst = br.worst_case_usd(adapter, bg.build_prompt("PT-02", "WEEK 3", "BEFORE"), None)
+        per_trial = adapter.cost_usd({"input_tokens": 6500, "output_tokens": 9000})
+        report = self.run_mock(adapter, round_robin=True, max_usd=3 * per_trial + worst + 1e-6)
+        self.assertTrue(report["stopped"].startswith("budget"))
+        self.assertEqual(_order(adapter), [("IMG_A", 1), ("IMG_B", 1), ("IMG_A", 2), ("IMG_B", 2)])
+        self.assertEqual(len(self.read_csv("counts_long.csv")), 4)
+        self.assertLessEqual(report["spent_usd"], 3 * per_trial + worst + 1e-6)
+
+    def test_round_robin_pause_counts_across_images(self):
+        adapter = MockAdapter(behaviors={("IMG_A", 2): "invalid", ("IMG_B", 2): "refusal",
+                                         ("IMG_A", 3): "max_tokens"})
+        report = self.run_mock(adapter, round_robin=True)
+        self.assertTrue(report["stopped"].startswith("paused"))
+        self.assertEqual(_order(adapter)[-1], ("IMG_A", 3))
+        self.assertTrue((self.run_dir(adapter) / br.PAUSE_FILE).exists())
+
+    def test_cli_flag(self):
+        br.main(["--manifest", str(self.manifest), "--image-root", str(self.tmp), "--image-ids", "IMG_A,IMG_B",
+                 "--runs", "2", "--max-usd", "100", "--execute", "--mock", "--round-robin",
+                 "--output-dir", str(self.out), "--experiment-id", "CLI"])
+        records = [json.loads(p.read_text()) for p in self.out.rglob("record.json")]
+        records.sort(key=lambda r: r["finished_unix_ns"])
+        self.assertEqual([(r["image_id"], r["trial"]) for r in records],
+                         [("IMG_A", 1), ("IMG_B", 1), ("IMG_A", 2), ("IMG_B", 2)])
+
+
+class TestCoverageDoesNotBlock(BenchmarkTestCase):
+    def test_unknown_coverage_under_review_still_runs(self):
+        rows = [{"image_id": i, "image_path": f"imgs/{i}.jpg", "site": s, "week": "NOT_APPLICABLE",
+                 "condition": "ALTITUDE_TEST", "altitude_m": "27.0", "coverage_scope": "UNKNOWN",
+                 "collection": "low_altitude", "needs_review": "coverage_scope;capture_geometry"}
+                for i, s in (("IMG_A", "PT-02"), ("IMG_B", "PT-R1"))]
+        self._write_manifest(rows)
+        for r in self.rows():
+            self.assertEqual(br.prompt_metadata_blockers(r), [])
+        adapter = MockAdapter()
+        report = self.run_mock(adapter, runs=2)
+        self.assertEqual(report["skipped_images"], [])
+        self.assertEqual(report["blocked_trials"], 0)
+        self.assertEqual(len(adapter.calls), 4)
+
+    def test_prompt_fields_still_guarded(self):
+        row = {"site": "PT-02", "week": "UNKNOWN", "condition": "ALTITUDE_TEST", "coverage_scope": "UNKNOWN",
+               "needs_review": "coverage_scope"}
+        self.assertTrue(br.prompt_metadata_blockers(row))
+        row.update(week="NOT_APPLICABLE", needs_review="condition;coverage_scope")
+        self.assertTrue(br.prompt_metadata_blockers(row))
+
+
+PILOT_ONE = ["LA_PT-R1_27m"]
+PILOT_TWO = ["LA_PT-R1_27m", "LA_PT-02_64m"]
+
+
+class TestLowAltitudePilot(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def load(self, ids):
+        return br.load_manifest(REPO / "manifests" / "manifest.csv", REPO, image_ids=ids)
+
+    def dry_run(self, ids, **kw):
+        return br.run_benchmark(self.load(ids), MockAdapter(), self.tmp / "o", "E", runs=10, max_usd=5,
+                                dry_run=True, ledger_path=self.tmp / "l.jsonl", log=quiet, **kw)
+
+    def test_pilot_images_exist_with_valid_hashes_and_confirmed_labels(self):
+        for r in self.load(PILOT_TWO):
+            self.assertEqual(br.sha256_bytes(r["_abs_path"].read_bytes()), r["sha256"], r["image_id"])
+            self.assertEqual((r["week"], r["condition"]), ("NOT_APPLICABLE", "ALTITUDE_TEST"))
+            self.assertEqual(r["coverage_scope"], "UNKNOWN")
+            self.assertEqual(br.prompt_metadata_blockers(r), [], r["image_id"])
+
+    def test_select_only_pt_r1_27m(self):
+        rows = self.load(PILOT_ONE)
+        self.assertEqual([r["image_id"] for r in rows], PILOT_ONE)
+        report = self.dry_run(PILOT_ONE)
+        self.assertEqual((report["planned_trials"], report["blocked_trials"]), (10, 0))
+        self.assertEqual(report["order"], [("LA_PT-R1_27m", t) for t in range(1, 11)])
+        self.assertFalse((self.tmp / "o").exists())
+
+    def test_select_two_lowest_round_robin(self):
+        rows = self.load(PILOT_TWO)
+        self.assertEqual(sorted(r["image_id"] for r in rows), sorted(PILOT_TWO))
+        report = self.dry_run(PILOT_TWO, round_robin=True)
+        self.assertEqual((report["planned_trials"], report["blocked_trials"]), (20, 0))
+        first = rows[0]["image_id"]
+        self.assertEqual([i for i, _ in report["order"][:4]],
+                         [first, [i for i in PILOT_TWO if i != first][0]] * 2)
+        self.assertEqual([t for _, t in report["order"]], [t for t in range(1, 11) for _ in range(2)])
+        self.assertFalse((self.tmp / "o").exists())
 
 
 if __name__ == "__main__":
