@@ -406,3 +406,245 @@ def reference_images(image_path: Path, image_id: str, rows: list, out: Path, sta
                           "Each crop shows one human-drawn box (cyan) with surrounding context. No model predictions.",
                           tiles, review / f"human_reference_contact_sheet_{image_id}.png")
     return [map_path, sheet]
+
+
+# ------------------------------------------------------------------ accuracy against a COMPLETE human reference
+
+OUTCOME_COLORS = {"TP": "#1a9850", "localization_below_threshold": "#fdae61",
+                  "reference_matched_by_other_detection": "#ffd92f", "no_reference_overlap": "#d73027"}
+OUTCOME_LABELS = {"TP": "true positive", "localization_below_threshold": "FP: overlaps a tree, IoU below threshold",
+                  "reference_matched_by_other_detection": "FP: tree already matched by another box",
+                  "no_reference_overlap": "FP: no reference tree"}
+REF_FOUND_COLOR = "#00e5ff"
+MISSED_COLOR = "#e7298a"
+ACCURACY_NOTE = "Accuracy against the human reference (COMPLETE). Each trial is matched one-to-one on its own."
+
+
+def _outcome_key(r):
+    return "TP" if r["outcome"] == "TP" else r["fp_type"]
+
+
+def _n_trials(acc):
+    return len(next(iter(acc.per_trial.values())))
+
+
+def _ref_found(acc, t):
+    lab = ec.threshold_label(t)
+    return {r["reference_id"]: r["trials_matched"] for r in acc.reference_rows if r["iou_threshold"] == lab}
+
+
+def _thr_text(t):
+    return f"IoU ≥ {ec.threshold_label(t)}" if t < 1 else "IoU = 1.00"
+
+
+def accuracy_figures(u, acc, out: Path) -> list:
+    fig_dir = out / "figures" / u.experiment_id / u.image_id
+    thresholds = list(acc.per_trial)
+    with Image.open(u.image_path) as im:
+        full = im.convert("RGB")
+    first = thresholds[0]
+    return [accuracy_by_threshold(u, acc, thresholds, fig_dir / "F_accuracy_by_threshold.png"),
+            trial_outcomes(u, acc, thresholds, fig_dir / "G_trial_tp_fp_fn.png"),
+            reference_frequency(u, acc, thresholds, fig_dir / "H_reference_detection_frequency.png"),
+            reference_vs_predictions_overview(u, acc, thresholds[:2], full,
+                                              fig_dir / "I_reference_vs_predictions_overview.png"),
+            reference_vs_predictions_full(u, acc, first, full,
+                                          fig_dir / f"I_reference_vs_predictions_{ec.threshold_tag(first)}.jpg"),
+            error_cases(u, acc, first, full, fig_dir / f"J_error_cases_{ec.threshold_tag(first)}.png")]
+
+
+def accuracy_by_threshold(u, acc, thresholds, path):
+    fig, ax = plt.subplots(figsize=(11, 5.6))
+    fig.subplots_adjust(top=0.82, bottom=0.16)
+    metrics = [("precision", "#2c7fb8"), ("recall", "#d95f02"), ("f1", "#1b9e77")]
+    rng = np.random.default_rng(0)
+    width = 0.25
+    for k, (m, color) in enumerate(metrics):
+        for i, t in enumerate(thresholds):
+            vals = [a[m] for a in acc.per_trial[t].values() if a[m] is not None]
+            if not vals:
+                continue
+            x = i + (k - 1) * width
+            mean, sd = np.mean(vals), (np.std(vals, ddof=1) if len(vals) > 1 else 0.0)
+            ax.bar(x, mean, width * 0.9, color=color, alpha=0.35, label=m if i == 0 else None)
+            ax.errorbar(x, mean, yerr=sd, color=color, capsize=4)
+            ax.scatter(x + rng.uniform(-0.06, 0.06, len(vals)), vals, s=12, color=color, zorder=3)
+            ax.text(x, min(1.04, mean + sd + 0.03), f"{mean:.2f}", ha="center", fontsize=8)
+    ax.set_xticks(range(len(thresholds)), [_thr_text(t) for t in thresholds])
+    ax.set_ylim(0, 1.12)
+    ax.set_ylabel("value per trial")
+    ax.legend(fontsize=9, loc="upper right")
+    fig.suptitle(f"F. Precision, recall and F1 against the human reference ({len(acc.reference.detections)} trees)\n"
+                 f"{header(u)}", fontsize=11)
+    return finish(fig, path, "Bars: mean over trials; whiskers: SD (n−1); dots: individual trials. " + ACCURACY_NOTE)
+
+
+def trial_outcomes(u, acc, thresholds, path):
+    fig, axes = plt.subplots(1, len(thresholds), figsize=(6 * len(thresholds), 5), sharey=True, squeeze=False)
+    fig.subplots_adjust(top=0.8, bottom=0.18, wspace=0.08)
+    for ax, t in zip(axes[0], thresholds):
+        trials = sorted(acc.per_trial[t])
+        x = np.arange(len(trials))
+        for off, key, color, name in ((-0.27, "true_positives", "#1a9850", "TP"),
+                                      (0.0, "false_positives", "#d73027", "FP"),
+                                      (0.27, "false_negatives", "#969696", "FN")):
+            ax.bar(x + off, [acc.per_trial[t][k][key] for k in trials], 0.27, color=color, label=name)
+        ax.set_xticks(x, [f"t{k:02d}" for k in trials], fontsize=8, rotation=90)
+        ax.set_title(_thr_text(t), fontsize=10)
+        ax.axhline(len(acc.reference.detections), color="#555", ls=":", lw=1)
+    axes[0][0].set_ylabel("boxes")
+    axes[0][0].legend(fontsize=8)
+    fig.suptitle(f"G. Per-trial true positives, false positives and false negatives\n{header(u)}", fontsize=11)
+    return finish(fig, path, f"Dotted line: {len(acc.reference.detections)} reference trees. " + ACCURACY_NOTE)
+
+
+def reference_frequency(u, acc, thresholds, path):
+    refs = [d.label for d in acc.reference.detections]
+    n = _n_trials(acc)
+    fig, ax = plt.subplots(figsize=(11, 5))
+    fig.subplots_adjust(top=0.82, bottom=0.16)
+    width = 0.8 / len(thresholds)
+    colors = ["#1a9850", "#91cf60", "#bdbdbd"]
+    for i, t in enumerate(thresholds):
+        found = _ref_found(acc, t)
+        ax.bar(np.arange(len(refs)) + (i - (len(thresholds) - 1) / 2) * width, [found[r] for r in refs], width,
+               color=colors[i % len(colors)], label=_thr_text(t))
+    ax.set_xticks(range(len(refs)), refs)
+    ax.set_ylim(0, n + 1)
+    ax.set_ylabel(f"trials that found the tree (of {n})")
+    ax.axhline(n, color="#555", ls=":", lw=1)
+    ax.legend(fontsize=8)
+    fig.suptitle(f"H. How often each human reference tree was detected\n{header(u)}", fontsize=11)
+    return finish(fig, path, "A tree counts as found in a trial when that trial's one-to-one matching pairs it with a "
+                             "box at the threshold. " + ACCURACY_NOTE)
+
+
+def reference_vs_predictions_overview(u, acc, thresholds, full, path):
+    scale = PLOT_WIDTH / full.width
+    thumb = np.asarray(full.resize((PLOT_WIDTH, round(full.height * scale)), Image.LANCZOS))
+    n = _n_trials(acc)
+    det_box = {d.uid: d.box for s in u.sets for d in s.detections}
+    fig, axes = plt.subplots(1, len(thresholds), figsize=(8 * len(thresholds), 6.8), squeeze=False)
+    fig.subplots_adjust(top=0.86, bottom=0.14, left=0.01, right=0.99, wspace=0.03)
+    for ax, t in zip(axes[0], thresholds):
+        lab = ec.threshold_label(t)
+        ax.imshow(thumb)
+        ax.set_axis_off()
+        for r in acc.outcome_rows:
+            if r["iou_threshold"] == lab:
+                b = [float(v) * scale for v in det_box[r["detection_uid"]]]
+                ax.add_patch(Rectangle((b[0], b[1]), b[2] - b[0], b[3] - b[1], fill=False, lw=0.7,
+                                       edgecolor=OUTCOME_COLORS[_outcome_key(r)]))
+        found = _ref_found(acc, t)
+        for d in acc.reference.detections:
+            b = [float(v) * scale for v in d.box]
+            color = REF_FOUND_COLOR if found[d.label] == n else MISSED_COLOR
+            ax.add_patch(Rectangle((b[0], b[1]), b[2] - b[0], b[3] - b[1], fill=False, lw=1.8, ls="--", edgecolor=color))
+            ax.text(b[0], b[3] + 4, f"{d.label} {found[d.label]}/{n}", color=color, fontsize=7, weight="bold", va="top",
+                    bbox={"facecolor": "black", "alpha": 0.6, "pad": 1, "lw": 0})
+        ax.set_title(_thr_text(t), fontsize=10)
+    handles = [Patch(edgecolor=c, facecolor="none", label=OUTCOME_LABELS[k]) for k, c in OUTCOME_COLORS.items()]
+    handles += [Patch(edgecolor=REF_FOUND_COLOR, facecolor="none", ls="--", label="reference tree, found in every trial"),
+                Patch(edgecolor=MISSED_COLOR, facecolor="none", ls="--", label="reference tree, missed in some trials")]
+    fig.legend(handles=handles, loc="lower center", ncol=3, fontsize=8, frameon=False, bbox_to_anchor=(0.5, 0.03))
+    fig.suptitle(f"I. Human reference vs Claude boxes from all {n} trials\n{header(u)}", fontsize=11)
+    return finish(fig, path, "Thin boxes: every trial's predictions, coloured by outcome. Dashed: human reference, "
+                             "labelled with the number of trials that found it. " + ACCURACY_NOTE)
+
+
+def reference_vs_predictions_full(u, acc, t, full, path):
+    lab = ec.threshold_label(t)
+    n = _n_trials(acc)
+    det_box = {d.uid: d.box for s in u.sets for d in s.detections}
+    lw = max(3, round(min(full.size) / 320))
+    f = font(max(14, round(min(full.size) / 70)))
+    lh = round(ImageDraw.Draw(full).textbbox((0, 0), "Ag", font=f)[3] * 1.5)
+    lines = [(f"{u.site} {u.image_id} | {u.model} | {n} trials | IoU >= {lab} | human reference (COMPLETE, "
+              f"{len(acc.reference.detections)} trees) vs Claude boxes from all trials", (255, 255, 255))]
+    lines += [(OUTCOME_LABELS[k] + " (thin)", hex_rgb(c)) for k, c in OUTCOME_COLORS.items()]
+    lines += [("reference tree found in every trial (thick; label = trials that found it)", hex_rgb(REF_FOUND_COLOR)),
+              ("reference tree missed in some trials (thick)", hex_rgb(MISSED_COLOR))]
+    img = Image.new("RGB", (full.width, full.height + lh * len(lines) + 2 * lw), (0, 0, 0))
+    img.paste(full, (0, 0))
+    draw = ImageDraw.Draw(img)
+    for r in acc.outcome_rows:
+        if r["iou_threshold"] == lab:
+            draw.rectangle([float(v) for v in det_box[r["detection_uid"]]],
+                           outline=hex_rgb(OUTCOME_COLORS[_outcome_key(r)]), width=max(2, lw // 2))
+    found = _ref_found(acc, t)
+    for d in acc.reference.detections:
+        b = [float(v) for v in d.box]
+        color = hex_rgb(REF_FOUND_COLOR) if found[d.label] == n else hex_rgb(MISSED_COLOR)
+        draw.rectangle([b[0] - lw, b[1] - lw, b[2] + lw, b[3] + lw], outline=color, width=lw)
+        text = f"{d.label} {found[d.label]}/{n}"
+        tb = draw.textbbox((0, 0), text, font=f)
+        draw.rectangle([b[0], b[3] + lw, b[0] + tb[2] + 2 * lw, b[3] + tb[3] + 3 * lw], fill=color)
+        draw.text((b[0] + lw, b[3] + 2 * lw), text, fill=(0, 0, 0), font=f)
+    for i, (text, color) in enumerate(lines):
+        draw.text((2 * lw, full.height + lw + i * lh), text, fill=color, font=f)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(path, quality=85)
+    return path
+
+
+def error_cases(u, acc, t, full, path):
+    """Crops of every false-positive location (grouped by IoU 0.50 group) and every reference tree missed in a trial."""
+    lab = ec.threshold_label(t)
+    n = _n_trials(acc)
+    det_box = {d.uid: d.box for s in u.sets for d in s.detections}
+    ref_box = {d.label: d.box for d in acc.reference.detections}
+    rows = [r for r in acc.outcome_rows if r["iou_threshold"] == lab]
+    tiles = []
+    fp_groups = {}
+    for r in rows:
+        if r["outcome"] == "FP":
+            fp_groups.setdefault(r["group_iou050"] or r["detection_uid"], []).append(r)
+    for g, rs in sorted(fp_groups.items()):
+        labels = sorted({r["human_label"] for r in rs if r["human_label"]})
+        types = sorted({r["fp_type"].replace("_", " ") for r in rs})
+        refs = sorted({r["best_reference"] for r in rs if r["best_reference"]})
+        title = (f"{g}: {len(rs)} FP (trial {','.join(str(r['trial']) for r in rs)})\n"
+                 f"human label: {'/'.join(labels) or 'none'}\n{'; '.join(types)}")
+        tiles.append((title, [det_box[r["detection_uid"]] for r in rs], [_outcome_key(r) for r in rs], refs))
+    for r in acc.reference_rows:
+        if r["iou_threshold"] == lab and r["trials_matched"] < n:
+            near = [x for x in rows if x["best_reference"] == r["reference_id"] and x["outcome"] == "FP"]
+            tiles.append((f"{r['reference_id']}: found in {r['trials_matched']}/{n} trials\nmissed in trial "
+                          f"{','.join(str(k) for k in r['trials_missed'])}",
+                          [det_box[x["detection_uid"]] for x in near], [_outcome_key(x) for x in near],
+                          [r["reference_id"]]))
+    cols = 4
+    nrows = max(1, -(-len(tiles) // cols))
+    height = 3.9 * nrows + 1.8
+    fig, axes = plt.subplots(nrows, cols, figsize=(4 * cols, height), squeeze=False)
+    fig.subplots_adjust(top=1 - 1.1 / height, bottom=1.0 / height, hspace=0.6, wspace=0.08)
+    for ax in axes.flat:
+        ax.set_axis_off()
+    for ax, (title, boxes, keys, refs) in zip(axes.flat, tiles):
+        x0, y0, x1, y1 = crop_region(boxes + [ref_box[x] for x in refs], u.width, u.height, 0.5, 150)
+        crop = full.crop((x0, y0, x1, y1))
+        crop.thumbnail((600, 600))
+        ax.imshow(np.asarray(crop), extent=(x0, x1, y1, y0))
+        for rid in refs:
+            b = [float(v) for v in ref_box[rid]]
+            ax.add_patch(Rectangle((b[0], b[1]), b[2] - b[0], b[3] - b[1], fill=False, lw=2, ls="--",
+                                   edgecolor=REF_FOUND_COLOR))
+            ax.text(b[0], b[1], rid, color="black", fontsize=7, va="bottom",
+                    bbox={"facecolor": REF_FOUND_COLOR, "pad": 1, "lw": 0})
+        for b, k in zip(boxes, keys):
+            b = [float(v) for v in b]
+            ax.add_patch(Rectangle((b[0], b[1]), b[2] - b[0], b[3] - b[1], fill=False, lw=1.3,
+                                   edgecolor=OUTCOME_COLORS[k]))
+        ax.set_xlim(x0, x1)
+        ax.set_ylim(y1, y0)
+        ax.set_title(title, fontsize=8)
+    if not tiles:
+        axes[0][0].text(0.5, 0.5, "No false positives and no missed reference trees", ha="center",
+                        transform=axes[0][0].transAxes)
+    handles = [Patch(edgecolor=c, facecolor="none", label=OUTCOME_LABELS[k]) for k, c in OUTCOME_COLORS.items()]
+    handles.append(Patch(edgecolor=REF_FOUND_COLOR, facecolor="none", ls="--", label="human reference box"))
+    fig.legend(handles=handles, loc="lower center", ncol=3, fontsize=8, frameon=False, bbox_to_anchor=(0.5, 0.3 / height))
+    fig.suptitle(f"J. Error cases at IoU ≥ {lab}: false-positive locations and missed reference trees\n{header(u)}",
+                 fontsize=11)
+    return finish(fig, path, "FP tiles group a recurring false positive by its IoU 0.50 consistency group. "
+                             "Missed-tree tiles show the reference box and nearby false positives. " + ACCURACY_NOTE)
