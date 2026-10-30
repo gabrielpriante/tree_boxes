@@ -729,6 +729,14 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
         for u in units:
             figure_paths[u.key] = ep.make_figures(u, results[u.key], stats[u.key], output_dir, full_res_maps)
         ep.make_review_images(unit_crops, output_dir)
+        ref_path = review_dir / "reference_boxes.csv"
+        ref_rows = read_csv(ref_path) if ref_path.exists() else []
+        for image_id, u in {u.image_id: u for u in units}.items():
+            rows = [r for r in ref_rows if r["image_id"] == image_id and (r.get("label") or "TREE").upper() == "TREE"]
+            if rows:
+                status = review["status"].get(image_id, ("NONE", ""))[0]
+                ep.reference_images(u.image_path, image_id, rows, output_dir,
+                                    "COMPLETE" if status == ec.REFERENCE_COMPLETE else f"not approved ({status})")
 
     config = {
         "algorithm_version": ec.ALGORITHM_VERSION,
