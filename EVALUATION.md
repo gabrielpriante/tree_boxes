@@ -141,6 +141,24 @@ They are not linked to detection ids until entered in `manual_review.csv`.
 If inputs or the algorithm change, review unit ids may change. The report lists any labelled id it no longer
 recognises.
 
+**Threshold of the labels.** Human labels refer to the **IoU ≥ 0.50** review units (`group_id_iou050`) and to
+the detections listed in each row. Group ids at 0.75 and 1.00 are separate groupings. For the pilot, only 4 of
+35 group ids at 0.75, and none at 1.00, have the same members as at 0.50. Labels are therefore never transferred
+by id. A transfer to another threshold would need an explicit detection-level mapping. The evaluation
+thresholds themselves remain 0.50, 0.75 and 1.00.
+
+**Validating hand edits.** `manual_review.csv` is checked before every evaluation, or on its own with
+`python evaluate_consistency.py --validate-review`, which writes nothing. The check covers:
+
+* `persistence_bin` must match `n_trials`. Date-like values such as `9-Aug`, which Excel produces from `8-9`,
+  are flagged.
+* `trials_detected` must list `n_trials` distinct trials.
+* `review_unit_id` values must be unique.
+* Generated columns must still equal the evaluation's template.
+
+Any failure stops the run with a clear error, without writing outputs. The file is never rewritten
+automatically. A safe Excel workflow is in `human_review/README.md`.
+
 ## Adding other models
 
 `evaluation_core` only sees `DetectionSet` objects: boxes in original-image pixels, plus image id, SHA-256,
