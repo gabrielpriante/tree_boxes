@@ -108,7 +108,7 @@ class TestManifest(BenchmarkTestCase):
         for r in rows:
             if r["collection"] == "low_altitude":
                 self.assertTrue(r["image_id"].startswith("LA_"))
-                self.assertEqual(r["week"], "UNKNOWN")
+                self.assertEqual(r["week"], "NOT_APPLICABLE")  # not UNKNOWN: week does not apply
 
     def test_unknown_prompt_metadata_is_skipped_not_guessed(self):
         rows = self.rows(("IMG_A",))
@@ -516,7 +516,9 @@ class TestSingleImageWorkflowUnchanged(unittest.TestCase):
     def test_encode_and_request_shape(self):
         img = Image.new("RGB", (5000, 3000), (10, 120, 30))
         jpeg, info = bg.prepare_upload(img)
-        self.assertEqual((info["width"], info["height"]), (2576, 1546))
+        # Preprocessing v2: the documented API target size, not just a 2576 px long edge.
+        self.assertEqual((info["width"], info["height"]), bg.api_resized_size(5000, 3000))
+        self.assertLessEqual(info["visual_tokens"], bg.MAX_VISUAL_TOKENS)
         self.assertEqual(bg.encode_for_api(img), __import__("base64").standard_b64encode(jpeg).decode())
         req = bg.build_request("B64", "PROMPT")
         self.assertEqual(req["messages"][0]["content"][0]["source"]["data"], "B64")
@@ -537,6 +539,364 @@ class TestSingleImageWorkflowUnchanged(unittest.TestCase):
             self.assertIn("1 trees", out.stdout)
             self.assertTrue((tmp / "o" / "X_annotated.jpg").exists())
             self.assertTrue((tmp / "o" / "tree_counts.csv").exists())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+LA_IDS = ["LA_PT-02_64m", "LA_PT-02_66m", "LA_PT-02_67m", "LA_PT-02_71m", "LA_PT-02_86m",
+          "LA_PT-R1_27m", "LA_PT-R1_28m", "LA_PT-R1_30m", "LA_PT-R1_30m_angled", "LA_PT-R1_31m"]
+
+
+# Image preprocessing (v2)
+class TestPreprocessing(unittest.TestCase):
+    def test_matches_documented_reference_examples(self):
+        # Examples from Anthropic's vision / vision-coordinates documentation.
+        self.assertEqual(bg.api_resized_size(1075, 1520, 1568, 1568), (924, 1307))
+        self.assertEqual(bg.api_resized_size(3840, 2160), (2576, 1449))
+        self.assertEqual(bg.api_resized_size(1920, 1080), (1920, 1080))
+        self.assertEqual(bg.api_resized_size(2000, 1500), (2000, 1500))
+        self.assertEqual(bg.count_image_tokens(2000, 1500), 3888)
+
+    def test_drone_resolution_needs_no_server_resize(self):
+        w, h = bg.api_resized_size(8192, 6144)
+        self.assertEqual((w, h), (2212, 1659))
+        self.assertLessEqual(bg.count_image_tokens(w, h), bg.MAX_VISUAL_TOKENS)
+        # The v1 upload (2576x1932) exceeded the token limit, so the API resized it again.
+        self.assertGreater(bg.count_image_tokens(2576, 1932), bg.MAX_VISUAL_TOKENS)
+        self.assertEqual(bg.api_resized_size(2212, 1659), (2212, 1659))  # idempotent: API leaves it alone
+
+    def test_request_rejects_rather_than_downsizes(self):
+        block = bg.build_request("B64", "P")["messages"][0]["content"][0]
+        self.assertEqual(block["transformations"], {"oversized_image": "error"})
+
+    def test_identical_bytes_across_ten_repetitions_of_a_real_image(self):
+        path = REPO / "drone_images" / "height" / "PT_R1" / "PT_R1_30m_angled.JPG"
+        digests, sizes = set(), set()
+        for i in range(10):
+            img = bg.load_image(path) if i % 5 == 0 else img  # reload from disk twice
+            jpeg, info = bg.prepare_upload(img)
+            digests.add(br.sha256_bytes(jpeg))
+            sizes.add((info["width"], info["height"], info["jpeg_quality"]))
+        self.assertEqual(len(digests), 1)
+        self.assertEqual(sizes, {(2212, 1659, 95)})
+        self.assertEqual(img.size, (8192, 6144))  # original kept full-resolution for rendering
+
+    def test_preprocessing_change_gives_new_config_id(self):
+        cfg = MockAdapter().config()
+        self.assertEqual(cfg["preprocessing"]["version"], 2)
+        v1 = {**cfg, "preprocessing": {**cfg["preprocessing"], "version": 1}}
+        self.assertNotEqual(br.config_id(cfg), br.config_id(v1))
+
+    def test_record_documents_three_resolutions(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            p = tmp / "x.jpg"
+            Image.new("RGB", (4000, 3000), (0, 90, 0)).save(p)
+            image = br.prepare_image({"_abs_path": p, "image_id": "X", "site": "PT-02",
+                                      "week": "WEEK 1", "condition": "BEFORE"})
+            m = image["meta"]
+            self.assertEqual((m["original_width"], m["original_height"]), (4000, 3000))
+            self.assertEqual((m["upload_width"], m["upload_height"]), bg.api_resized_size(4000, 3000))
+            self.assertEqual((m["api_effective_width"], m["api_effective_height"]),
+                             (m["upload_width"], m["upload_height"]))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+# Fixed experimental settings
+class TestFixedConfiguration(unittest.TestCase):
+    def test_settings_unchanged(self):
+        cfg = ClaudeAdapter(client=object()).config()
+        self.assertEqual(cfg["model"], "claude-opus-5-5")
+        self.assertEqual(cfg["inference"]["effort"], "high")
+        self.assertEqual(cfg["inference"]["thinking"], {"type": "adaptive"})
+        self.assertEqual(cfg["inference"]["max_tokens"], 32000)
+        self.assertEqual(cfg["prompt_template_sha256"],
+                         "e53504b32a5931a597ebd8499aba89f602d90b720d8a0bb9d9ea92cfc96c100f")
+        self.assertEqual(cfg["output_schema_sha256"],
+                         "963a771dd008a68fbca9cb2b42e762d9109fb40cd52423d8b706b7b8e2bc8e38")
+        self.assertIn("0-1000", cfg["coordinates"])
+
+    def test_budget_never_alters_settings(self):
+        adapter = MockAdapter()
+        before = json.dumps(adapter.config(), sort_keys=True)
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            img = tmp / "a.jpg"
+            Image.new("RGB", (300, 200)).save(img)
+            rows = [{"image_id": "A", "image_path": "a.jpg", "site": "PT-02", "week": "WEEK 3",
+                     "condition": "BEFORE", "altitude_m": "95", "coverage_scope": "UNKNOWN", "_abs_path": img}]
+            br.run_benchmark(rows, adapter, tmp / "o", "E", runs=10, max_usd=0.9, dry_run=False, log=quiet)
+            self.assertEqual(before, json.dumps(adapter.config(), sort_keys=True))
+            recs = [json.loads(p.read_text()) for p in (tmp / "o").rglob("record.json")]
+            self.assertTrue(recs)
+            for r in recs:
+                self.assertEqual((r["model"], r["inference_settings"]["effort"],
+                                  r["inference_settings"]["max_tokens"]), ("claude-opus-5-5", "high", 32000))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+# Manifest metadata: vocabulary, NOT_APPLICABLE vs UNKNOWN, confirmation gate
+class TestManifestMetadata(BenchmarkTestCase):
+    def base(self, **kw):
+        row = {"image_id": "IMG_A", "image_path": "imgs/IMG_A.jpg", "site": "PT-02", "week": "WEEK 3",
+               "condition": "BEFORE", "altitude_m": "95.0", "coverage_scope": "UNKNOWN",
+               "collection": "standard", "needs_review": ""}
+        row.update(kw)
+        return row
+
+    def test_vocabulary_enforced(self):
+        for bad in ({"coverage_scope": "Full"}, {"condition": "before"}, {"week": "week 3"},
+                    {"site": "PT 02"}, {"altitude_m": "high"}, {"week": ""}):
+            self._write_manifest([self.base(**bad)])
+            with self.assertRaises(ValueError, msg=bad):
+                br.load_manifest(self.manifest, self.tmp)
+        for ok in ({"coverage_scope": "FULL_SITE"}, {"coverage_scope": "PARTIAL_SITE"},
+                   {"week": "NOT_APPLICABLE", "condition": "ALTITUDE_TEST"}, {"condition": "MORNING_START"}):
+            self._write_manifest([self.base(**ok)])
+            br.load_manifest(self.manifest, self.tmp)
+
+    def test_not_applicable_runs_without_override_but_unknown_does_not(self):
+        na = self.base(week="NOT_APPLICABLE", condition="ALTITUDE_TEST", needs_review="coverage_scope")
+        self.assertEqual(br.prompt_metadata_blockers(na), [])
+        self.assertTrue(br.prompt_metadata_blockers(self.base(week="UNKNOWN")))
+        self._write_manifest([na])
+        adapter = MockAdapter()
+        report = br.run_benchmark(br.load_manifest(self.manifest, self.tmp), adapter, self.out, "TEST",
+                                  runs=2, max_usd=10, dry_run=False, log=quiet)
+        self.assertEqual(len(adapter.calls), 2)
+        self.assertEqual(report["skipped_images"], [])
+        prompt = (next(self.out.rglob("prompt.txt"))).read_text()
+        self.assertIn("NOT_APPLICABLE", prompt)
+        self.assertIn("ALTITUDE_TEST", prompt)
+
+    def test_unconfirmed_prompt_fields_block_execution(self):
+        self._write_manifest([self.base(week="NOT_APPLICABLE", condition="ALTITUDE_TEST",
+                                        needs_review="week;condition;coverage_scope")])
+        adapter = MockAdapter()
+        report = br.run_benchmark(br.load_manifest(self.manifest, self.tmp), adapter, self.out, "TEST",
+                                  runs=2, max_usd=10, dry_run=False, log=quiet)
+        self.assertEqual(adapter.calls, [])
+        self.assertIn("awaiting confirmation", report["skipped_images"][0][1])
+        self.assertEqual(report["blocked_trials"], 2)
+
+    def test_coverage_review_alone_does_not_block(self):
+        self.assertEqual(br.prompt_metadata_blockers(self.base(needs_review="coverage_scope")), [])
+
+    def test_real_manifest_uses_explicit_labels(self):
+        rows = br.load_manifest(REPO / "manifests" / "manifest.csv", REPO, collection="low_altitude")
+        for r in rows:
+            self.assertEqual((r["week"], r["condition"]), ("NOT_APPLICABLE", "ALTITUDE_TEST"))
+            self.assertNotIn(r["condition"], ("BEFORE", "AFTER"))
+            self.assertTrue(r["capture_datetime"].startswith("2026:10:24"))
+            float(r["altitude_m"])
+        w1 = br.load_manifest(REPO / "manifests" / "manifest.csv", REPO, image_ids=["W01_MORNING-START_PT-02"])[0]
+        self.assertEqual(w1["condition"], "MORNING_START")  # original label kept, mapping unconfirmed
+        self.assertIn("condition", br.review_fields(w1))
+
+
+class TestManifestUpdatePreservesEdits(unittest.TestCase):
+    def test_update_never_overwrites_manual_corrections(self):
+        import make_manifest as mm
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            path = tmp / "manifest.csv"
+            shutil.copyfile(REPO / "manifests" / "manifest.csv", path)
+            with path.open(newline="") as f:
+                rows = list(csv.DictReader(f))
+                fields = list(rows[0])
+            edits = {"LA_PT-02_64m": {"coverage_scope": "FULL_SITE", "needs_review": "condition"},
+                     "W01_MORNING-START_PT-02": {"condition": "BEFORE", "needs_review": "coverage_scope"},
+                     "LA_PT-R1_27m": {"week": "UNKNOWN"}}
+            for r in rows:
+                r.update(edits.get(r["image_id"], {}))
+            with path.open("w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=fields)
+                w.writeheader()
+                w.writerows(rows)
+            mm.update(path)
+            with path.open(newline="") as f:
+                after = {r["image_id"]: r for r in csv.DictReader(f)}
+            self.assertEqual(after["LA_PT-02_64m"]["coverage_scope"], "FULL_SITE")
+            self.assertEqual(after["LA_PT-02_64m"]["needs_review"], "condition")
+            self.assertEqual(after["W01_MORNING-START_PT-02"]["condition"], "BEFORE")
+            self.assertEqual(after["W01_MORNING-START_PT-02"]["needs_review"], "coverage_scope")
+            # An UNKNOWN cell may be filled with the proposal, which is then flagged for confirmation.
+            self.assertEqual(after["LA_PT-R1_27m"]["week"], "NOT_APPLICABLE")
+            self.assertIn("week", after["LA_PT-R1_27m"]["needs_review"].split(";"))
+            self.assertTrue(list(tmp.glob("manifest.csv.bak-*")))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+# Cross-experiment budget accounting
+class TestProjectLedger(BenchmarkTestCase):
+    def test_new_experiment_id_does_not_reset_budget(self):
+        ledger = self.tmp / "project_ledger.jsonl"
+        a = MockAdapter()
+        br.run_benchmark(self.rows(("IMG_A",)), a, self.tmp / "out1", "EXP_ONE", runs=10, max_usd=1.5,
+                         dry_run=False, ledger_path=ledger, log=quiet)
+        first = len(a.calls)
+        self.assertGreater(first, 0)
+        b = MockAdapter()
+        report = br.run_benchmark(self.rows(("IMG_B",)), b, self.tmp / "out2", "EXP_TWO", runs=10,
+                                  max_usd=1.5, dry_run=False, ledger_path=ledger, log=quiet)
+        self.assertEqual(b.calls, [])  # same credits already spent by EXP_ONE
+        self.assertIn("budget", report["stopped"])
+
+    def test_confirmed_estimated_and_unresolved_are_separated(self):
+        ledger_path = self.tmp / "l.jsonl"
+        adapter = MockAdapter(behaviors={("IMG_A", 2, 1): "midstream_error"})
+        br.run_benchmark(self.rows(("IMG_A",)), adapter, self.out, "TEST", runs=2, max_usd=50,
+                         dry_run=False, ledger_path=ledger_path, max_attempts=1, log=quiet)
+        s = br.SpendLedger(ledger_path).summary()
+        one = adapter.cost_usd({"input_tokens": 6500, "output_tokens": 9000})
+        self.assertAlmostEqual(s["confirmed_usd"], one, places=6)
+        self.assertGreater(s["estimated_usd"], 0.6)  # worst-case bound for the failed request
+        self.assertEqual(s["unresolved_usd"], 0)
+        # A crash between ledger start and final leaves the attempt unresolved at its worst case.
+        br.SpendLedger(ledger_path).start("crash-uid", {}, 0.7)
+        self.assertAlmostEqual(br.SpendLedger(ledger_path).summary()["unresolved_usd"], 0.7)
+
+    def test_no_double_counting(self):
+        ledger_path = self.tmp / "l.jsonl"
+        adapter = MockAdapter()
+        br.run_benchmark(self.rows(("IMG_A",)), adapter, self.out, "TEST", runs=3, max_usd=50,
+                         dry_run=False, ledger_path=ledger_path, log=quiet)
+        ledger = br.SpendLedger(ledger_path)
+        before = ledger.summary()
+        run_dir = self.out / "TEST" / br.config_id(adapter.config())
+        self.assertEqual(ledger.reconcile(br.all_attempts(run_dir)), 0)
+        uid = json.loads(next(run_dir.rglob("record.json")).read_text())["attempt_uid"]
+        ledger.finish(uid, 99.0, "actual_usage", "success")  # duplicate final entry
+        self.assertEqual(ledger.summary(), before)
+        self.assertEqual(before["attempts"], 3)
+        # Resuming with nothing left to do adds nothing.
+        br.run_benchmark(self.rows(("IMG_A",)), adapter, self.out, "TEST", runs=3, max_usd=50, resume=True,
+                         dry_run=False, ledger_path=ledger_path, log=quiet)
+        self.assertEqual(br.SpendLedger(ledger_path).summary()["total_usd"], before["total_usd"])
+
+    def test_legacy_records_backfilled_once(self):
+        ledger_path = self.tmp / "l.jsonl"
+        adapter = MockAdapter()
+        br.run_benchmark(self.rows(("IMG_A",)), adapter, self.out, "TEST", runs=2, max_usd=50,
+                         dry_run=False, ledger_path=ledger_path, log=quiet)
+        total = br.SpendLedger(ledger_path).summary()["total_usd"]
+        ledger_path.unlink()  # results that predate the ledger
+        fresh = br.SpendLedger(ledger_path)
+        run_dir = self.out / "TEST" / br.config_id(adapter.config())
+        fresh.reconcile(br.all_attempts(run_dir))
+        fresh.reconcile(br.all_attempts(run_dir))
+        self.assertAlmostEqual(fresh.summary()["total_usd"], total)
+
+    def test_dry_run_reports_project_spend_and_writes_nothing(self):
+        ledger_path = self.tmp / "l.jsonl"
+        br.run_benchmark(self.rows(("IMG_A",)), MockAdapter(), self.tmp / "o1", "E1", runs=2, max_usd=5,
+                         dry_run=False, ledger_path=ledger_path, log=quiet)
+        size = ledger_path.stat().st_size
+        lines = []
+        br.run_benchmark(self.rows(("IMG_B",)), MockAdapter(), self.tmp / "o2", "E2", runs=10, max_usd=5,
+                         dry_run=True, ledger_path=ledger_path, log=lines.append)
+        text = "\n".join(lines)
+        self.assertIn("confirmed from API usage:          $0.4120", text)
+        self.assertIn("remaining $4.5880", text)
+        self.assertIn("not visible here", text)
+        self.assertEqual(ledger_path.stat().st_size, size)
+        self.assertFalse((self.tmp / "o2").exists())
+
+    def test_mock_cannot_write_into_production_results(self):
+        with self.assertRaises(SystemExit):
+            br.main(["--manifest", str(self.manifest), "--image-root", str(self.tmp), "--mock", "--dry-run",
+                     "--output-dir", str(br.PRODUCTION_OUTPUT_DIR / "x")])
+        self.assertNotEqual(br.MOCK_OUTPUT_DIR.resolve(), br.PRODUCTION_OUTPUT_DIR.resolve())
+
+
+# Repeated-invalid-output safeguard
+class TestPauseSafeguard(BenchmarkTestCase):
+    def test_pauses_after_three_consecutive_and_keeps_records(self):
+        adapter = MockAdapter(behaviors={("IMG_A", 2): "invalid", ("IMG_A", 3): "refusal",
+                                         ("IMG_A", 4): "max_tokens"})
+        report = self.run_mock(adapter)
+        self.assertEqual([c["trial"] for c in adapter.calls], [1, 2, 3, 4])
+        self.assertTrue(report["stopped"].startswith("paused"))
+        run_dir = self.run_dir(adapter)
+        pause = json.loads((run_dir / br.PAUSE_FILE).read_text())
+        self.assertEqual([t["status"] for t in pause["trials"]], ["invalid", "refusal", "max_tokens"])
+        statuses = [r["status"] for r in self.read_csv("counts_long.csv")]
+        self.assertEqual(statuses, ["success", "invalid", "refusal", "max_tokens"])
+
+    def test_resume_requires_acknowledgment_then_continues_without_rerunning(self):
+        adapter = MockAdapter(behaviors={("IMG_A", t): "invalid" for t in (1, 2, 3)})
+        self.run_mock(adapter)
+        blocked = MockAdapter()
+        report = self.run_mock(blocked, resume=True)
+        self.assertEqual(blocked.calls, [])
+        self.assertIn("acknowledge-pause", report["stopped"])
+
+        resumed = MockAdapter()
+        report = self.run_mock(resumed, resume=True, acknowledge_paused=True)
+        self.assertEqual(resumed.calls[0]["trial"], 4)  # invalid trials 1-3 are not retried
+        self.assertEqual(report["incomplete"], {})
+        run_dir = self.run_dir(resumed)
+        self.assertFalse((run_dir / br.PAUSE_FILE).exists())
+        self.assertEqual(len(list(run_dir.glob("PAUSED_acknowledged_*.json"))), 1)
+        summary = {r["image_id"]: r for r in self.read_csv("counts_summary.csv")}
+        self.assertEqual(summary["IMG_A"]["invalid_trials"], "3")
+        self.assertEqual(summary["IMG_A"]["successful_trials"], "7")
+
+    def test_non_consecutive_outcomes_do_not_pause(self):
+        adapter = MockAdapter(behaviors={("IMG_A", 2): "invalid", ("IMG_A", 3): "invalid",
+                                         ("IMG_A", 5): "refusal", ("IMG_A", 6): "invalid"})
+        report = self.run_mock(adapter, ids=("IMG_A",))
+        self.assertIsNone(report["stopped"])
+        self.assertEqual(len(adapter.calls), 10)
+
+    def test_errors_do_not_count_or_reset(self):
+        adapter = MockAdapter(behaviors={("IMG_A", 1): "invalid", ("IMG_A", 2, 1): "error",
+                                         ("IMG_A", 2, 2): "invalid", ("IMG_A", 3): "invalid"})
+        report = self.run_mock(adapter, ids=("IMG_A",))
+        self.assertTrue(report["stopped"].startswith("paused"))
+
+    def test_streak_carries_across_sessions(self):
+        adapter = MockAdapter(behaviors={("IMG_A", 1): "invalid", ("IMG_A", 2): "invalid"}, interrupt_after=2)
+        self.run_mock(adapter, ids=("IMG_A",))
+        later = MockAdapter(behaviors={("IMG_A", 3): "invalid"})
+        report = self.run_mock(later, ids=("IMG_A",), resume=True)
+        self.assertTrue(report["stopped"].startswith("paused"))
+        self.assertEqual([c["trial"] for c in later.calls], [3])
+
+    def test_threshold_configurable_and_disableable(self):
+        bad = {("IMG_A", t): "invalid" for t in range(1, 11)}
+        adapter = MockAdapter(behaviors=bad)
+        self.run_mock(adapter, ids=("IMG_A",), pause_after=0)
+        self.assertEqual(len(adapter.calls), 10)
+        shutil.rmtree(self.out)
+        adapter = MockAdapter(behaviors=bad)
+        self.run_mock(adapter, ids=("IMG_A",), pause_after=5)
+        self.assertEqual(len(adapter.calls), 5)
+
+
+# Ten-image October 24 selection
+class TestOctober24Selection(unittest.TestCase):
+    def test_collection_filter_selects_exactly_the_ten(self):
+        rows = br.load_manifest(REPO / "manifests" / "manifest.csv", REPO, collection="low_altitude")
+        self.assertEqual(sorted(r["image_id"] for r in rows), sorted(LA_IDS))
+        by_ids = br.load_manifest(REPO / "manifests" / "manifest.csv", REPO, image_ids=LA_IDS)
+        self.assertEqual([r["image_id"] for r in rows], [r["image_id"] for r in by_ids])
+
+    def test_paths_and_hashes_verified(self):
+        for r in br.load_manifest(REPO / "manifests" / "manifest.csv", REPO, image_ids=LA_IDS):
+            self.assertEqual(br.sha256_bytes(r["_abs_path"].read_bytes()), r["sha256"], r["image_id"])
+
+    def test_dry_run_plans_one_hundred_trials(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            rows = br.load_manifest(REPO / "manifests" / "manifest.csv", REPO, image_ids=LA_IDS)
+            report = br.run_benchmark(rows, MockAdapter(), tmp / "o", "E", runs=10, max_usd=5, dry_run=True,
+                                      ledger_path=tmp / "l.jsonl", log=quiet)
+            self.assertEqual(report["planned_trials"] + report["blocked_trials"], 100)
+            self.assertFalse((tmp / "o").exists())
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
