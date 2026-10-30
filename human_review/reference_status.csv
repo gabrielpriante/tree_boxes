@@ -1,3 +1,3 @@
 image_id,image_sha256,reference_status,annotator,status_date,notes
 LA_PT-02_64m,25f3c331564db9cc9ada0e151bbec16506b8702dd34ce245dc5c671b427c85b4,NONE,,,
-LA_PT-R1_27m,f3ba7ede6a0fc191836d7d548a098e5dcb86b2b84994d781b494f7723b56f781,NONE,,,
+LA_PT-R1_27m,f3ba7ede6a0fc191836d7d548a098e5dcb86b2b84994d781b494f7723b56f781,COMPLETE,Gabe,2026-10-30,"Completeness approved by Gabe on 2026-10-30: the 11 boxes H01-H11 (Make Sense VOC export, authoritative) are the complete reference for this image."
