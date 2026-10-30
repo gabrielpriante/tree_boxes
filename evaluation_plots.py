@@ -331,19 +331,22 @@ def make_review_images(unit_crops: dict, out: Path) -> list:
             img.save(p, quality=90)
             short = uid.split(f"{u.image_id}:", 1)[1]
             tiles.append((img, short, f"{g.n_trials}/{u.n_trials} trials" + ("" if g.status == "CONSISTENT" else " · ambiguous")))
-        sheets.append(contact_sheet(u, tiles, out / "review" / f"contact_sheet_{u.experiment_id}_{u.image_id}.png"))
+        sheets.append(contact_sheet(
+            f"Review units: {header(u)}",
+            "Group crops: box colour = trial. Ambiguous-group crops: pink = the unit under review, grey = other members. "
+            "Label in human_review/manual_review.csv.",
+            tiles, out / "review" / f"contact_sheet_{u.experiment_id}_{u.image_id}.png"))
     return sheets
 
 
-def contact_sheet(u, tiles, path: Path, tile=300, cols=6) -> Path:
+def contact_sheet(title: str, subtitle: str, tiles, path: Path, tile=300, cols=6) -> Path:
     cap = 46
     head = 70
     rows = max(1, -(-len(tiles) // cols))
     sheet = Image.new("RGB", (cols * tile, head + rows * (tile + cap)), (255, 255, 255))
     draw = ImageDraw.Draw(sheet)
-    draw.text((10, 8), f"Review units: {header(u)}", fill=(0, 0, 0), font=font(18))
-    draw.text((10, 36), "Group crops: box colour = trial. Ambiguous-group crops: pink = the unit under review, "
-                        "grey = other members. Label in human_review/manual_review.csv.", fill=(60, 60, 60), font=font(13))
+    draw.text((10, 8), title, fill=(0, 0, 0), font=font(18))
+    draw.text((10, 36), subtitle, fill=(60, 60, 60), font=font(13))
     f1, f2 = font(14), font(12)
     for i, (img, title, sub) in enumerate(tiles):
         x, y = (i % cols) * tile, head + (i // cols) * (tile + cap)
@@ -355,3 +358,51 @@ def contact_sheet(u, tiles, path: Path, tile=300, cols=6) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(path, optimize=False)
     return path
+
+
+# ------------------------------------------------------------------ human reference (no model predictions)
+
+REFERENCE_COLOR = (0, 229, 255)
+
+
+def reference_images(image_path: Path, image_id: str, rows: list, out: Path, status: str = "not approved") -> list:
+    """Full-resolution map and contact sheet of human reference boxes only (no model output)."""
+    boxes = [(r["reference_id"], [float(r[c]) for c in ("x_min_px", "y_min_px", "x_max_px", "y_max_px")]) for r in rows]
+    with Image.open(image_path) as im:
+        full = im.convert("RGB")
+    lw = max(3, round(min(full.size) / 320))
+    f = font(max(14, round(min(full.size) / 70)))
+    probe = ImageDraw.Draw(full)
+    lh = round(probe.textbbox((0, 0), "Ag", font=f)[3] * 1.5)
+    annotators = sorted({r.get("annotator") or "?" for r in rows})
+    lines = [f"HUMAN REFERENCE ONLY | {image_id} | {len(boxes)} boxes | annotator {', '.join(annotators)} | "
+             f"completeness: {status}",
+             "Original-image pixels as annotated; no model predictions shown."]
+    img = Image.new("RGB", (full.width, full.height + lh * len(lines) + 2 * lw), (0, 0, 0))
+    img.paste(full, (0, 0))
+    draw = ImageDraw.Draw(img)
+    for rid, b in boxes:
+        draw.rectangle(b, outline=REFERENCE_COLOR, width=lw)
+        tb = draw.textbbox((0, 0), rid, font=f)
+        draw.rectangle([b[0], b[1], b[0] + tb[2] + 2 * lw, b[1] + tb[3] + 2 * lw], fill=REFERENCE_COLOR)
+        draw.text((b[0] + lw, b[1] + lw), rid, fill=(0, 0, 0), font=f)
+    for i, text in enumerate(lines):
+        draw.text((2 * lw, full.height + lw + i * lh), text, fill=(255, 255, 255), font=f)
+    review = out / "review"
+    review.mkdir(parents=True, exist_ok=True)
+    map_path = review / f"human_reference_{image_id}.jpg"
+    img.save(map_path, quality=85)
+
+    tiles = []
+    for rid, b in boxes:
+        region = crop_region([b], full.width, full.height, 0.6, 150)
+        crop = full.crop(region)
+        d = ImageDraw.Draw(crop)
+        clw = max(2, round(max(crop.size) / 200))
+        d.rectangle([b[0] - region[0], b[1] - region[1], b[2] - region[0], b[3] - region[1]],
+                    outline=REFERENCE_COLOR, width=clw)
+        tiles.append((crop, rid, f"{b[2] - b[0]:.0f} x {b[3] - b[1]:.0f} px"))
+    sheet = contact_sheet(f"Human reference boxes: {image_id} ({len(boxes)} boxes; completeness: {status})",
+                          "Each crop shows one human-drawn box (cyan) with surrounding context. No model predictions.",
+                          tiles, review / f"human_reference_contact_sheet_{image_id}.png")
+    return [map_path, sheet]
