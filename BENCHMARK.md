@@ -15,20 +15,52 @@ consistency, not detection accuracy.
 | Output | structured JSON (`OUTPUT_SCHEMA` in `box_generation.py`) |
 | Prompt | `PROMPT_TEMPLATE` in `box_generation.py`, unchanged |
 | Coordinates | normalized 0–1000 `[x_min, y_min, x_max, y_max]` |
-| Preprocessing | EXIF transpose → RGB → longest edge 2576 px (LANCZOS) → JPEG q95 (lower only if > 5 MB) |
+| Preprocessing (v2) | EXIF transpose → RGB → resize (LANCZOS) to the API's documented target size → JPEG q95 (lower only if > 5 MB) |
 
 The runner never changes these settings, including when the budget runs low; it stops instead.
 Refusal fallbacks to other models are deliberately not enabled. Any change to model, settings, prompt
 template, schema or preprocessing produces a different `model_config_id`, so results from
 different configurations are written to different folders and can't be mixed.
 
+## Image resolution (preprocessing change v1 → v2)
+
+This is a **preprocessing** change. Model settings are unchanged.
+
+Anthropic's documentation (`build-with-claude/vision` and `vision-coordinates`, checked 2026-10-30)
+says Opus 5.5 is in the high-resolution tier. Images are limited to **2,576 px on the long edge
+and 4,784 visual tokens**, where tokens = ⌈w/28⌉ × ⌈h/28⌉. Any image over either limit is
+silently downsized by the API to the largest aspect-preserving size that fits both. It is then
+padded (not resized) to a multiple of 28 px.
+
+| Stage | v1 (before) | v2 (now) |
+|---|---|---|
+| Original file | 8192 × 6144 | 8192 × 6144 (kept for rendering boxes) |
+| Locally preprocessed upload | 2576 × 1932 (6,348 tokens: over the limit) | 2212 × 1659 (4,740 tokens) |
+| Effective resolution the model sees | 2212 × 1659, resized on the server with an undocumented method | 2212 × 1659, exactly the uploaded bytes |
+
+The v1 upload satisfied the edge limit but not the token limit, so every v1 image was downsized again
+on the server. v2 resizes locally to the documented target, using Anthropic's reference algorithm
+(`box_generation.api_resized_size`). The resolution the model sees is unchanged, but the resampling
+is now ours, deterministic and recorded. The image block also sets `transformations.oversized_image = "error"`,
+so the API rejects (HTTP 400, unbilled) any image that would need resizing instead of resizing it silently.
+Each record stores the original, upload and effective dimensions plus the upload's visual tokens.
+
+The v2 configuration has a new `model_config_id`, so it can't mix with any v1 results.
+Single-image results already in `output/` were produced with v1 preprocessing.
+
+Anthropic's guide notes that Claude handles pixel coordinates better than normalized 0–1000
+coordinates. The 0–1000 convention is a fixed design decision here and was not changed, but it is
+worth stating as a methodological caveat.
+
 ## Files
 
 | File | Purpose |
 |---|---|
 | `box_generation.py` | Original single-image CLI; also supplies prompt, schema, preprocessing and request parameters to the runner |
-| `make_manifest.py` | Builds `manifests/manifest.csv` from `drone_images/` |
-| `manifests/manifest.csv` | Image list and metadata (edit by hand to complete `UNKNOWN` fields) |
+| `make_manifest.py` | Builds `manifests/manifest.csv` (`--update` fills gaps without overwriting edits; `--review` lists open questions) |
+| `manifests/manifest.csv` | Image list and metadata (edit by hand to complete or confirm fields) |
+| `manifests/METADATA_REVIEW.md` | Fields awaiting your confirmation, October 24 images first |
+| `spend_ledger/anthropic_api_ledger.jsonl` | Project-wide spending ledger (created on the first paid request) |
 | `model_adapters.py` | `ClaudeAdapter` (M08), `MockAdapter` (offline), placeholders for M01/M02/M09/M10/Copilot |
 | `benchmark_runner.py` | Batch runner |
 | `tests/test_benchmark.py` | Offline tests (`python -m pytest tests -q`) |
@@ -36,17 +68,35 @@ different configurations are written to different folders and can't be mixed.
 ## Manifest
 
 Columns required by the runner: `image_id, image_path, site, week, condition, altitude_m, coverage_scope`.
-`make_manifest.py` also writes `collection` (`standard` or `low_altitude`), capture time, gimbal pitch,
-altitude source, dimensions, `sha256`, `needs_review` and `notes`.
+`make_manifest.py` also writes `collection` (`standard` or `low_altitude`), capture time, gimbal pitch and
+yaw, `capture_geometry` (NADIR/OBLIQUE from gimbal pitch), altitude source, dimensions, `sha256`,
+`needs_review` and `notes`.
+
+Controlled vocabulary, checked on every load (any other value is an error):
+
+| Field | Allowed values |
+|---|---|
+| site | `PT-02`, `PT-R1`, `UNKNOWN` |
+| week | `WEEK <n>`, `NOT_APPLICABLE`, `UNKNOWN` |
+| condition | `BEFORE`, `AFTER`, `ALTITUDE_TEST`, `MORNING_START`, `AFTERNOON_END`, `UNKNOWN` |
+| coverage_scope | `FULL_SITE`, `PARTIAL_SITE`, `UNKNOWN` |
+| altitude_m | number or `UNKNOWN` |
+
+`UNKNOWN` means not yet established. `NOT_APPLICABLE` means the field does not apply.
 
 * `altitude_m` is the DJI XMP `RelativeAltitude` (metres above the takeoff point, not above the canopy).
-* `coverage_scope` is `UNKNOWN` for every image; it has to be confirmed by looking at the images.
-* Week 1 condition is the folder label (`MORNING_START` / `AFTERNOON_END`); confirm whether it maps to BEFORE/AFTER.
-* Low-altitude images (`LA_*`) have `UNKNOWN` week and condition.
-* `site`, `week` and `condition` are inserted into the prompt. The runner skips images where any of them
-  is `UNKNOWN` (override: `--allow-unknown-metadata`). Editing these fields after trials have run changes the
-  prompt, and the runner refuses to mix the two.
-* `make_manifest.py` will not overwrite an existing manifest without `--force`.
+* The October 24 altitude series has *proposed* labels `week = NOT_APPLICABLE` and
+  `condition = ALTITUDE_TEST`, still listed in `needs_review` for confirmation. They do not imply
+  intervention BEFORE/AFTER status.
+* Week 1 keeps its folder labels (`MORNING_START` / `AFTERNOON_END`) until the mapping is confirmed.
+* `coverage_scope` is `UNKNOWN` everywhere; it needs a visual check and is never inferred from altitude.
+* **Run gate:** `site`, `week` and `condition` are inserted into the prompt. The runner won't send an image
+  while any of them is `UNKNOWN` or still listed in `needs_review`. `NOT_APPLICABLE` is a valid value and
+  needs no override. `--allow-unknown-metadata` bypasses the gate. Editing these fields after trials have
+  run changes the prompt, and the runner refuses to mix the two.
+* `make_manifest.py --update` only fills cells that are `UNKNOWN` or blank, adds new columns and new
+  images, keeps a timestamped backup, and never overwrites a value or `needs_review` entry someone has set.
+  Without `--update` or `--force` it refuses to touch an existing manifest.
 * `PT_02.JPG` in the repository root is byte-identical to `drone_images/week1/afternoon_end/PT_02.JPG` and is not in the manifest.
 
 ## Running
@@ -60,7 +110,13 @@ python benchmark_runner.py --manifest manifests/manifest.csv --image-ids W03_BEF
 
 # Continue after an interruption, budget stop or failure
 python benchmark_runner.py ... --execute --resume
+
+# October 24 altitude series (all ten low-altitude images)
+python benchmark_runner.py --manifest manifests/manifest.csv --collection low_altitude --runs 10 --max-usd 5 --experiment-id altitude_oct24_v1 --dry-run
 ```
+
+`--mock` runs write to `benchmark_results_mock/` (git-ignored) with their own ledger. The runner refuses
+to write mock results inside `benchmark_results/`.
 
 Images run in manifest order; trials 1–10 of one image complete before the next image starts.
 Requests are strictly sequential. Each trial is a new single-message request: no conversation
@@ -108,25 +164,51 @@ would bias the consistency statistics. Earlier attempts are never deleted.
 `counts_summary.csv` statistics use successful trials only. The standard deviation is the sample SD (n − 1).
 It is blank when fewer than 2 trials succeeded. CV = SD / mean.
 
-## Budget guard and its limits
+## Repeated-outcome pause
 
-* Cost = actual `usage` tokens × list price ($4 input / $20 output per million tokens; thinking is billed as output).
-* Before each request, the runner computes that request's worst case: input tokens (the actual figure from an
-  earlier trial of the same image, otherwise a conservative bound) plus the full 32,000 output tokens,
-  about $0.67. The request is sent only if recorded spend + worst case ≤ `--max-usd`.
-* `--max-usd` applies to cumulative recorded spend for this model config across all sessions.
-* A request that fails after the response stream opened, or is interrupted, is charged at its worst case
-  because its real usage is unknown.
+After 3 consecutive trials (any image) ending `invalid`, `refusal` or `max_tokens`, the runner pauses and writes
+`<model_config_id>/PAUSED.json` listing those trials and their validation errors. Nothing is retried or
+discarded: the trials remain complete experimental outcomes in every CSV. `error`/`interrupted` attempts
+neither count toward nor reset the streak. The streak carries across sessions.
 
-The guard is an estimate, not a hard ceiling. List prices are hard-coded and may change. Server-side billing
-can differ from local estimates, and spend outside this runner isn't visible to it. Because it reserves the
-worst case, the guard can stop with some budget unused: with $5 and about $0.20–0.30 per trial, expect
-roughly 15–20 trials before it stops, not the full 20. Set a spending limit in the Anthropic Console as the
-real hard cap.
+To continue after reviewing the trials, run `--execute --resume --acknowledge-pause`. The pause file is
+archived as `PAUSED_acknowledged_<time>.json` and the count restarts. `--pause-after N` changes the
+threshold; `0` disables the pause.
+
+## Spending ledger and budget guard
+
+* **One ledger for the project.** Every paid attempt is written to `spend_ledger/anthropic_api_ledger.jsonl`,
+  whatever `--experiment-id` or `--output-dir` is used. A new experiment ID therefore can't reset the budget:
+  `--max-usd` is checked against the ledger total for all Claude experiments in this project.
+* **Two entries per attempt**, keyed by a unique `attempt_uid`: `start` (with its worst-case cost) before the
+  request and `final` after it. Reading or reconciling the ledger never counts an attempt twice, and a
+  duplicate entry is ignored.
+* **Confirmed vs estimated.** The ledger reports three categories separately:
+  * *confirmed*: actual `usage` tokens × list price ($4 input / $20 output per million; thinking is
+    billed as output);
+  * *estimated*: worst-case cost for requests that failed after the stream opened or were interrupted;
+  * *unresolved*: a `start` with no `final` (the process died mid-request), counted at its worst case.
+* **Reconciliation.** Before running, attempts found on disk but missing from the ledger (for example from a
+  crash between writing `record.json` and the ledger) are added once.
+* **Pre-request check (unchanged).** A request is sent only if ledger total + that request's worst case
+  (full 32,000 output tokens, about $0.67) ≤ `--max-usd`. Otherwise the run stops and lists the outstanding trials.
+* The dry run prints the ledger totals, the remaining budget, and an illustrative projection of how many
+  trials the guard would admit at several output-token levels.
+* Original per-trial costs (`record.json`) and per-experiment CSV costs are kept as before.
+
+Limits: this is local accounting, not an account-level ceiling.
+* It can't see spending elsewhere on the Anthropic account (Console, other scripts, other machines, or
+  other copies of this folder).
+* List prices are hard-coded, and server-side billing may differ.
+* Interrupted requests are estimates.
+
+A guaranteed $5 cap can only come from a spend limit configured on the Anthropic account itself.
+Because the guard reserves the worst case, it can stop with some budget unused.
 
 ## Reproducibility checks
 
 * Image file hash must match the manifest `sha256`.
+* Preprocessing is deterministic: tests confirm identical upload bytes across ten repetitions of a real image.
 * Preprocessed upload bytes and prompt hash must match all earlier trials of that image (a Pillow upgrade that
   changes JPEG bytes is detected).
 * `model_config.json` must match the current configuration.
