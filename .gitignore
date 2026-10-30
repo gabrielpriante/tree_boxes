@@ -8,3 +8,6 @@ __pycache__/
 
 # Partial writes from the benchmark runner
 *.tmp
+
+# Offline mock runs (never real results)
+benchmark_results_mock/
