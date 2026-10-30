@@ -10,6 +10,7 @@ import itertools
 import json
 import random
 import shutil
+import statistics
 import sys
 import tempfile
 import unittest
@@ -310,9 +311,19 @@ class EvaluationRun(MockBenchmark):
         status = self.read_status()
         self.write_status(status, "PARTIAL")
         self.evaluate()
-        self.assertFalse((self.tmp / "eval" / "accuracy_vs_reference.csv").exists())
+        for name in ("accuracy_vs_reference.csv", "accuracy_summary.csv", "accuracy_report.md", "prediction_outcomes.csv"):
+            self.assertFalse((self.tmp / "eval" / name).exists(), name)
         self.write_status(status, "COMPLETE")
-        self.evaluate()
+        res = self.evaluate(figures=True)
+        for name in ("accuracy_summary.csv", "reference_detection_frequency.csv", "prediction_outcomes.csv",
+                     "accuracy_report.md"):
+            self.assertTrue((self.tmp / "eval" / name).exists(), name)
+        names = {p.name for ps in res["figures"].values() for p in ps}
+        for prefix in ("F_", "G_", "H_", "I_reference_vs_predictions_overview", "I_reference_vs_predictions_iou050", "J_"):
+            self.assertTrue(any(n.startswith(prefix) for n in names), prefix)
+        self.assertTrue((self.tmp / "eval" / "review" / "human_reference_IMG_A.jpg").exists())
+        freq = [r for r in self.read("reference_detection_frequency.csv") if r["iou_threshold"] == "0.50"]
+        self.assertEqual(len(freq), len(det))
         acc = [r for r in self.read("accuracy_vs_reference.csv") if r["trial"] == "1"]
         self.assertEqual(len(acc), 3)
         for r in acc:
@@ -383,6 +394,73 @@ class EvaluationRun(MockBenchmark):
         template = self.read("manual_review_template.csv")
         self.assertTrue(all((self.tmp / "eval" / r["crop_path"]).exists() for r in template))
         self.assertEqual(len(list((self.tmp / "eval" / "review").glob("contact_sheet_*.png"))), 2)
+
+
+class TestAccuracyAgainstReference(unittest.TestCase):
+    """Synthetic trials vs a complete reference, with hand-computed answers."""
+
+    def setUp(self):
+        import evaluation_accuracy as ea
+        from types import SimpleNamespace
+        self.ea = ea
+        A, B, C = strip(0, 10), strip(100, 110), strip(200, 210)
+        self.ref = ec.DetectionSet("human_reference", "IMG", "s", 1000, 1000, None,
+                                   tuple(ec.Detection(f"REF:IMG:H0{i}", f"H0{i}", b) for i, b in enumerate((A, B, C), 1)))
+        t1 = dset(1, [A, strip(102, 112), strip(500, 510)])   # exact A; B at IoU 2/3; box on nothing
+        t2 = dset(2, [A, strip(1, 11)])                       # A, plus a second box on A (IoU 9/11)
+        self.u = SimpleNamespace(experiment_id="EXP", image_id="IMG", sets=[t1, t2])
+        self.res = ea.evaluate_accuracy(self.u, self.ref, "COMPLETE", ec.THRESHOLDS)
+
+    def trial(self, t, k):
+        return self.res.per_trial[t][k]
+
+    def outcome(self, t, uid):
+        lab = ec.threshold_label(t)
+        return next(r for r in self.res.outcome_rows if r["iou_threshold"] == lab and r["detection_uid"] == uid)
+
+    def test_counts_per_trial_and_threshold(self):
+        got = {(ec.threshold_label(t), k): tuple(self.trial(t, k)[m] for m in ("true_positives", "false_positives", "false_negatives"))
+               for t in ec.THRESHOLDS for k in (1, 2)}
+        self.assertEqual(got, {("0.50", 1): (2, 1, 1), ("0.50", 2): (1, 1, 2),
+                               ("0.75", 1): (1, 2, 2), ("0.75", 2): (1, 1, 2),
+                               ("1.00", 1): (1, 2, 2), ("1.00", 2): (1, 1, 2)})
+        a = self.trial(HALF, 1)
+        self.assertAlmostEqual(a["precision"], 2 / 3)
+        self.assertAlmostEqual(a["recall"], 2 / 3)
+        self.assertAlmostEqual(a["f1"], 2 / 3)
+        self.assertAlmostEqual(a["mean_iou_tp"], (1 + 2 / 3) / 2)
+
+    def test_false_positive_types(self):
+        self.assertEqual(self.outcome(HALF, "IMG:t01:T003")["fp_type"], "no_reference_overlap")
+        self.assertEqual(self.outcome(THREE_Q, "IMG:t01:T002")["fp_type"], "localization_below_threshold")
+        self.assertEqual(self.outcome(HALF, "IMG:t02:T002")["fp_type"], "reference_matched_by_other_detection")
+        tp = self.outcome(HALF, "IMG:t01:T002")
+        self.assertEqual((tp["outcome"], tp["matched_reference"]), ("TP", "H02"))
+
+    def test_iou_one_needs_identical_box(self):
+        self.assertEqual(self.outcome(ONE, "IMG:t01:T001")["outcome"], "TP")
+        self.assertEqual(self.outcome(ONE, "IMG:t01:T002")["outcome"], "FP")
+
+    def test_reference_detection_frequency(self):
+        freq = {(r["iou_threshold"], r["reference_id"]): r["trials_matched"] for r in self.res.reference_rows}
+        self.assertEqual([freq[("0.50", h)] for h in ("H01", "H02", "H03")], [2, 1, 0])
+        self.assertEqual([freq[("0.75", h)] for h in ("H01", "H02", "H03")], [2, 0, 0])
+
+    def test_summary_mean_sd_and_pooled(self):
+        s = self.ea.summary_value(self.res, HALF, "precision")
+        self.assertAlmostEqual(s["mean"], (2 / 3 + 1 / 2) / 2)
+        self.assertAlmostEqual(s["sd"], statistics.stdev([2 / 3, 1 / 2]))
+        self.assertEqual((s["min"], s["max"]), (0.5, 2 / 3))
+        self.assertAlmostEqual(s["pooled_over_trials"], 3 / 5)
+        self.assertAlmostEqual(self.ea.summary_value(self.res, HALF, "recall")["pooled_over_trials"], 3 / 6)
+
+    def test_containment_measured(self):
+        # exact A twice (fully inside), shifted B: 8 of its 10 units inside H02
+        self.assertEqual(sorted(self.res.containment["0.50"]), [0.8, 1.0, 1.0])
+
+    def test_refuses_incomplete_reference(self):
+        with self.assertRaises(ec.ReferenceNotAvailableError):
+            self.ea.evaluate_accuracy(self.u, self.ref, "PARTIAL", ec.THRESHOLDS)
 
 
 class ReviewValidation(MockBenchmark):
