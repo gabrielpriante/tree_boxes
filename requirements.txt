@@ -2,3 +2,6 @@ anthropic==1.15.0
 pillow==12.1.1
 python-dotenv
 pytest
+numpy==2.4.3
+scipy==1.17.1
+matplotlib==3.10.8
