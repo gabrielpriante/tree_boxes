@@ -94,14 +94,23 @@ The inventory counts the whole site. Image coverage is not established, so this 
 
 ## 5. Human validation
 
-Review units: 71 (persistence groups at IoU ≥ 0.50; ambiguous groups are split into their individual detections for review). Labelled so far: 0.
-
-No human labels yet.
+Review units: 71 (persistence groups at IoU ≥ 0.50; ambiguous groups are split into their individual detections for review). Labelled so far: 9.
 
 
-**Accuracy against a human reference:** not computed. No image has a COMPLETE human reference annotation.
+| Image | Persistence | Label | Units |
+|---|---|---|---|
+| LA_PT-R1_27m | 1-4 | TREE | 1 |
+| LA_PT-R1_27m | 1-4 | UNCERTAIN | 2 |
+| LA_PT-R1_27m | 8-9 | TREE | 2 |
+| LA_PT-R1_27m | all 10 | NON_TREE | 1 |
+| LA_PT-R1_27m | all 10 | TREE | 3 |
+
+TREE units found in every trial are consistently detected trees; NON_TREE units found in many trials are repeated false positives; TREE units in fewer than all trials are trees the model detects inconsistently.
+
+- lowalt_pilot_ptr1_27m_v1/LA_PT-R1_27m: 5 of 11 human reference trees were not detected in any trial at IoU ≥ 0.50.
+
+**Accuracy against a human reference:** computed for images with a COMPLETE reference; see `accuracy_report.md`.
 - LA_PT-02_64m: reference status NONE; precision/recall/F1 not computed
-- LA_PT-R1_27m: reference status NONE; precision/recall/F1 not computed
 
 Preliminary observations reported by the project lead (free text; not machine-readable labels and not linked to detection ids until confirmed in `manual_review.csv`):
 
@@ -132,6 +141,12 @@ Preliminary observations reported by the project lead (free text; not machine-re
 - `figures/lowalt_pilot_ptr1_27m_v1/LA_PT-R1_27m/C_box_variation_iou050.png`
 - `figures/lowalt_pilot_ptr1_27m_v1/LA_PT-R1_27m/D_agreement_matrix.png`
 - `figures/lowalt_pilot_ptr1_27m_v1/LA_PT-R1_27m/E_count_consistency.png`
+- `figures/lowalt_pilot_ptr1_27m_v1/LA_PT-R1_27m/F_accuracy_by_threshold.png`
+- `figures/lowalt_pilot_ptr1_27m_v1/LA_PT-R1_27m/G_trial_tp_fp_fn.png`
+- `figures/lowalt_pilot_ptr1_27m_v1/LA_PT-R1_27m/H_reference_detection_frequency.png`
+- `figures/lowalt_pilot_ptr1_27m_v1/LA_PT-R1_27m/I_reference_vs_predictions_overview.png`
+- `figures/lowalt_pilot_ptr1_27m_v1/LA_PT-R1_27m/I_reference_vs_predictions_iou050.jpg`
+- `figures/lowalt_pilot_ptr1_27m_v1/LA_PT-R1_27m/J_error_cases_iou050.png`
 
 Review crops: `review/crops/`; contact sheets: `review/contact_sheet_*.png`.
 
