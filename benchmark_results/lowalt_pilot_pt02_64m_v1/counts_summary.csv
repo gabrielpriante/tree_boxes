@@ -1,0 +1,2 @@
+image_id,model,successful_trials,mean_tree_count,standard_deviation,minimum_count,maximum_count,coefficient_of_variation,experiment_id,model_code,model_config_id,site,week,condition,altitude_m,collection,trials_recorded,invalid_trials,refusal_trials,max_tokens_trials,unresolved_trials,total_cost_usd
+LA_PT-02_64m,claude-opus-5-5,10,24.5,1.841,22,28,0.0751,lowalt_pilot_pt02_64m_v1,M08,M08_high_a28fe01ac5,PT-02,NOT_APPLICABLE,ALTITUDE_TEST,64.3,low_altitude,10,0,0,0,0,0.57406

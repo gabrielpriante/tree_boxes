@@ -1,0 +1,78 @@
+{
+  "record_schema_version": 2,
+  "attempt_uid": "1716a0858d6045158a2b2f2a21c57057",
+  "experiment_id": "lowalt_pilot_pt02_64m_v1",
+  "model_config_id": "M08_high_a28fe01ac5",
+  "model_code": "M08",
+  "adapter": "anthropic-messages",
+  "model": "claude-opus-5-5",
+  "inference_settings": {
+    "effort": "high",
+    "thinking": {
+      "type": "adaptive"
+    },
+    "max_tokens": 32000,
+    "streaming": true,
+    "structured_output": "output_config.format json_schema"
+  },
+  "pricing": {
+    "currency": "USD",
+    "input_per_mtok": 4.0,
+    "output_per_mtok": 20.0,
+    "cache_write_per_mtok": 5.0,
+    "cache_read_per_mtok": 0.2,
+    "source": "Anthropic API list pricing for claude-opus-5-5 (verified 2026-10-30)"
+  },
+  "image_id": "LA_PT-02_64m",
+  "image_path": "drone_images/height/PT_02/PT_02_64m.JPG",
+  "site": "PT-02",
+  "week": "NOT_APPLICABLE",
+  "condition": "ALTITUDE_TEST",
+  "altitude_m": "64.3",
+  "coverage_scope": "UNKNOWN",
+  "collection": "low_altitude",
+  "manifest_sha256": "6c4951119b6af6927ca4a8c3a9e890d02e328ad26d341589e83663211794db99",
+  "trial": 6,
+  "attempt": 1,
+  "image": {
+    "file_sha256": "25f3c331564db9cc9ada0e151bbec16506b8702dd34ce245dc5c671b427c85b4",
+    "original_width": 8192,
+    "original_height": 6144,
+    "upload_width": 2212,
+    "upload_height": 1659,
+    "api_effective_width": 2212,
+    "api_effective_height": 1659,
+    "upload_visual_tokens": 4740,
+    "upload_jpeg_quality": 95,
+    "upload_bytes": 2604556,
+    "upload_sha256": "d11b8ee12330b179e7cc0db66fed8fac164102671dadba23c1504b913a8e7212"
+  },
+  "prompt_sha256": "bca1b53c438e86b2073c7b6ed3e7153e7128e2a6d802207ea5ab7d6ec2fe9462",
+  "output_schema_sha256": "963a771dd008a68fbca9cb2b42e762d9109fb40cd52423d8b706b7b8e2bc8e38",
+  "prompt_template_sha256": "e53504b32a5931a597ebd8499aba89f602d90b720d8a0bb9d9ea92cfc96c100f",
+  "preprocessing": {
+    "version": 2,
+    "exif_transpose": true,
+    "color_mode": "RGB",
+    "max_upload_edge_px": 2576,
+    "max_visual_tokens": 4784,
+    "resize": "PIL Image.resize, LANCZOS, to the documented API target size (largest aspect-preserving size within both limits)",
+    "server_resize_guard": "image transformations.oversized_image = error",
+    "format": "JPEG",
+    "jpeg_qualities_tried": [
+      95,
+      90,
+      85,
+      80,
+      70
+    ],
+    "max_image_bytes": 5242880
+  },
+  "pre_request_worst_case_usd": 0.66538,
+  "software": {
+    "python": "3.13.12",
+    "pillow": "12.1.1",
+    "anthropic": "1.15.0"
+  },
+  "started_utc": "2026-10-30T20:42:43+00:00"
+}
