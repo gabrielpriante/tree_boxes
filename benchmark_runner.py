@@ -23,6 +23,9 @@ Examples:
     # Continue an interrupted or budget-stopped run without repeating completed trials
     ... --execute --resume
 
+    # Alternate between the selected images by trial (A1, B1, A2, B2, ...)
+    ... --round-robin
+
     # Offline rehearsal with the mock adapter (no network, no cost)
     ... --execute --mock
 """
@@ -846,12 +849,23 @@ def aggregate(exp_dir: Path) -> dict:
 
 # ---------------------------------------------------------------- orchestration
 
+def execution_order(plan, round_robin: bool = False) -> list:
+    """(row, trial) pairs for the ready, outstanding trials. Sequential (default): every trial of one
+    image before the next image. Round-robin: by trial number, cycling through the images in manifest
+    order (A1, B1, A2, B2, ...). Completed trials are already excluded from each image's todo list, so
+    a resumed run continues the same order where it stopped."""
+    pairs = [(i, row, trial) for i, (row, todo, ready) in enumerate(plan) if ready for trial in todo]
+    if round_robin:
+        pairs.sort(key=lambda p: (p[2], p[0]))
+    return [(row, trial) for _, row, trial in pairs]
+
+
 def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int = 10,
                   max_usd: float | None = None, resume: bool = False, dry_run: bool = True,
                   max_attempts: int = 2, allow_unknown_metadata: bool = False,
                   manifest_path: Path | None = None, ledger_path: Path | None = None,
                   pause_after: int = DEFAULT_PAUSE_AFTER, acknowledge_paused: bool = False,
-                  log=print) -> dict:
+                  round_robin: bool = False, log=print) -> dict:
     cfg = adapter.config()
     cfg_id = config_id(cfg)
     exp_dir = output_dir / experiment_id
@@ -876,6 +890,8 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
         f"preprocessing v{cfg['preprocessing']['version']})")
     log(f"Results dir:  {run_dir}")
     log(f"Ledger:       {ledger.path}")
+    log("Order:        " + ("round-robin across images (A1, B1, A2, B2, ...)" if round_robin
+                             else "sequential (all trials of one image, then the next)"))
 
     plan, total_worst, max_worst, max_input = [], 0.0, 0.0, 0
     log(f"\n{'image_id':<28}{'done':>6}{'to run':>8}{'worst-case/trial':>18}  status")
@@ -896,6 +912,7 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
     n_todo = sum(len(t) for _, t, ready in plan if ready)
     n_blocked = sum(len(t) for _, t, ready in plan if not ready)
     report["planned_trials"] = n_todo
+    report["order"] = [(r["image_id"], t) for r, t in execution_order(plan, round_robin)]
     report["blocked_trials"] = n_blocked
     log(f"\nTrials to run now: {n_todo}. Blocked until metadata is confirmed: {n_blocked}.")
     if n_blocked:
@@ -979,47 +996,48 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
     spent = ledger.summary()["total_usd"]
     streak = nonsuccess_streak(run_dir, ack_ns)
     consecutive_failed = 0
+    images = {}
     try:
-        for row, todo, ready in plan:
-            if not todo or not ready:
-                continue
+        for row, trial in execution_order(plan, round_robin):
             image_id = row["image_id"]
-            image = prepare_image(row)
-            check_consistency(image, image_attempts(run_dir, image_id), image_id)
-            log(f"\n{image_id}: upload {image['meta']['upload_width']}x{image['meta']['upload_height']} "
-                f"({image['meta']['upload_visual_tokens']} visual tokens; "
-                f"from {image['meta']['original_width']}x{image['meta']['original_height']})")
-            for trial in todo:
-                for _ in range(max_attempts):
-                    worst = worst_case_usd(adapter, image["prompt"], observed_input_tokens(run_dir, image_id),
-                                           image["meta"]["upload_visual_tokens"])
-                    if spent + worst > max_usd:
-                        raise BudgetStop(f"next request worst-case ${worst:.4f} would exceed the remaining "
-                                         f"budget ${max_usd - spent:.4f} (limit ${max_usd:.2f})")
-                    rec = run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image,
-                                      run_dir, worst, manifest_sha, ledger)
-                    spent = ledger.summary()["total_usd"]
-                    report["trials_run"] += 1
-                    usage = rec["usage"] or {}
-                    log(f"  trial {trial:02d} attempt {rec['attempt']:02d}: {rec['status']:<10} "
-                        f"trees={rec['tree_count'] if rec['tree_count'] is not None else '-':<4} "
-                        f"in={usage.get('input_tokens', 0)} out={usage.get('output_tokens', 0)} "
-                        f"cost=${rec['estimated_cost_usd']:.4f} total=${spent:.4f}"
-                        + (f"  [{rec['error']}]" if rec.get("error") else ""))
-                    if rec["status"] in TERMINAL:
-                        break
+            if image_id not in images:
+                image = images[image_id] = prepare_image(row)
+                check_consistency(image, image_attempts(run_dir, image_id), image_id)
+                log(f"\n{image_id}: upload {image['meta']['upload_width']}x{image['meta']['upload_height']} "
+                    f"({image['meta']['upload_visual_tokens']} visual tokens; "
+                    f"from {image['meta']['original_width']}x{image['meta']['original_height']})")
+            image = images[image_id]
+            for _ in range(max_attempts):
+                worst = worst_case_usd(adapter, image["prompt"], observed_input_tokens(run_dir, image_id),
+                                       image["meta"]["upload_visual_tokens"])
+                if spent + worst > max_usd:
+                    raise BudgetStop(f"next request worst-case ${worst:.4f} would exceed the remaining "
+                                     f"budget ${max_usd - spent:.4f} (limit ${max_usd:.2f})")
+                rec = run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image,
+                                  run_dir, worst, manifest_sha, ledger)
+                spent = ledger.summary()["total_usd"]
+                report["trials_run"] += 1
+                usage = rec["usage"] or {}
+                label = f"{image_id} trial {trial:02d}" if round_robin else f"trial {trial:02d}"
+                log(f"  {label} attempt {rec['attempt']:02d}: {rec['status']:<10} "
+                    f"trees={rec['tree_count'] if rec['tree_count'] is not None else '-':<4} "
+                    f"in={usage.get('input_tokens', 0)} out={usage.get('output_tokens', 0)} "
+                    f"cost=${rec['estimated_cost_usd']:.4f} total=${spent:.4f}"
+                    + (f"  [{rec['error']}]" if rec.get("error") else ""))
                 if rec["status"] in TERMINAL:
-                    consecutive_failed = 0
-                    streak = streak + [rec] if rec["status"] in NONSUCCESS_TERMINAL else []
-                    if pause_after and len(streak) >= pause_after:
-                        write_pause(run_dir, streak, pause_after, exp_dir)
-                        raise PauseStop(f"{len(streak)} consecutive trials ended invalid/refusal/max_tokens "
-                                        f"({', '.join(r['status'] for r in streak)})")
-                else:
-                    consecutive_failed += 1
-                    if consecutive_failed >= MAX_CONSECUTIVE_FAILED_TRIALS:
-                        raise FatalAdapterError(f"{consecutive_failed} consecutive trials failed; "
-                                                "stopping. Re-run with --resume later.")
+                    break
+            if rec["status"] in TERMINAL:
+                consecutive_failed = 0
+                streak = streak + [rec] if rec["status"] in NONSUCCESS_TERMINAL else []
+                if pause_after and len(streak) >= pause_after:
+                    write_pause(run_dir, streak, pause_after, exp_dir)
+                    raise PauseStop(f"{len(streak)} consecutive trials ended invalid/refusal/max_tokens "
+                                    f"({', '.join(r['status'] for r in streak)})")
+            else:
+                consecutive_failed += 1
+                if consecutive_failed >= MAX_CONSECUTIVE_FAILED_TRIALS:
+                    raise FatalAdapterError(f"{consecutive_failed} consecutive trials failed; "
+                                            "stopping. Re-run with --resume later.")
     except BudgetStop as e:
         report["stopped"] = f"budget: {e}"
     except PauseStop as e:
@@ -1087,6 +1105,9 @@ def main(argv=None):
     ap.add_argument("--allow-unknown-metadata", action="store_true",
                     help="Run images whose site/week/condition are UNKNOWN or unconfirmed "
                          "(values enter the prompt as they stand)")
+    ap.add_argument("--round-robin", action="store_true",
+                    help="Cycle through the selected images by trial (A1, B1, A2, B2, ...) instead of "
+                         "completing each image first. Same trials, outputs and budget checks")
     ap.add_argument("--image-root", type=Path, default=ROOT, help="Base for manifest image_path values")
     ap.add_argument("--mock", action="store_true", help="Use the offline mock adapter (no network, no cost)")
     ap.add_argument("--mock-interrupt-after", type=int,
@@ -1124,7 +1145,8 @@ def main(argv=None):
                            max_attempts=args.max_attempts,
                            allow_unknown_metadata=args.allow_unknown_metadata,
                            manifest_path=args.manifest, ledger_path=ledger_path,
-                           pause_after=args.pause_after, acknowledge_paused=args.acknowledge_pause)
+                           pause_after=args.pause_after, acknowledge_paused=args.acknowledge_pause,
+                           round_robin=args.round_robin)
     if report.get("stopped") == "interrupted by user":
         sys.exit(130)
 
