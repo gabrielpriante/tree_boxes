@@ -273,7 +273,8 @@ def build_request(image_b64: str, prompt: str) -> dict:
 
 
 def load_env() -> None:
-    """Load ANTHROPIC_API_KEY from the .env file next to this script."""
+    """Load API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY) from the .env file next to this script.
+    Never prints or logs them."""
     from dotenv import load_dotenv
 
     load_dotenv(Path(__file__).resolve().parent / ".env")
