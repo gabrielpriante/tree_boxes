@@ -127,8 +127,13 @@ instead.
 **Known differences from M08, kept on purpose and documented.**
 
 * Reasoning effort settings are not computationally equivalent across providers.
-* M08's raw responses include Claude's thinking text. M09 records reasoning-token counts only. No reasoning
-  summary is requested, and with `store: false` no encrypted reasoning is kept.
+* M08's raw responses include Claude's thinking text. M09 has no readable reasoning: no reasoning summary is
+  requested, so each `reasoning` output item has an empty `summary` and `content`. `store: false` does **not**
+  stop the API from returning `reasoning` items with an `encrypted_content` field. In the first M09 trial, 8
+  such items of about 3.6–7.8 KB each made up most of `response_raw.json`. These blobs are opaque. They are not
+  readable reasoning summaries and are kept only because the raw response is preserved unchanged. Their presence
+  says nothing about whether, or for how long, OpenAI retains data on its servers. Only reasoning-token counts
+  (`usage.reasoning_tokens`) are analysed.
 * The image passes through each provider's own encoder: 28-px patches for Claude, and 32-px patches for the
   GPT-6 family (assumed).
 * M08 used Anthropic's `oversized_image: error` guard. For M09, the equivalent protections are
