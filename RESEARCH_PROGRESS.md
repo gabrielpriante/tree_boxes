@@ -1,10 +1,11 @@
 # Research Progress: Repeated-Observation Benchmark of Computer Vision for Urban Trees
 
-*Frontline Labs · Park Triangle urban-tree benchmark · progress report as of 30 October 2026*
+*Frontline Labs · Park Triangle urban-tree benchmark · progress report as of 4 November 2026*
 
 This report covers the work held in this repository. It draws only on the saved inference records,
 evaluation outputs and human-review files cited in the final section. All findings are **preliminary and
-image-specific**: they come from 20 model trials on two drone images, with one completed human reference.
+image-specific**: they come from 30 model trials by two model families on two drone images, with one completed
+human reference.
 
 ---
 
@@ -31,6 +32,10 @@ The outputs are then analysed offline in four separate ways, which answer four d
 All 20 trials succeeded, for a total API cost of **$0.92**. For PT-R1, a human annotator outlined 11 trees, and
 that reference was approved as complete. It is the only image with a completed reference.
 
+The second model, M09 (OpenAI GPT-6.1 Sol at high reasoning effort), was then run 10 times on **PT-R1 only**. It
+received byte-identical image input and the identical prompt, and all 10 trials succeeded for **$0.54**. This
+gives the study its first comparison between model families on one image.
+
 **Most important results.**
 
 * **Stable counts can hide unstable detections.** Both images gave tight counts: PT-R1 averaged 6.1 trees
@@ -46,11 +51,21 @@ that reference was approved as complete. It is the only image with a completed r
   detection skill.
 * **PT-02's count of 24.5 is close to the field inventory of 24 trees, but this is not evidence of accuracy.**
   No human reference exists for PT-02 yet, and the image's coverage of the inventoried site is unconfirmed.
+* **Two model families, one image: similar detection accuracy, different repeatability, different box extent.**
+  On PT-R1 at IoU ≥ 0.50, the two models perform almost identically (F1 0.56 for Claude, 0.57 for GPT-6.1 Sol;
+  recall 0.44 for both).
+  * **Same omissions:** both find the same five trees and **both never find the same five reference trees**.
+  * **Repeatability:** Claude is more repeatable from run to run (spatial agreement 0.92 vs 0.84).
+  * **Box extent:** GPT-6.1 Sol's boxes cover more of each human box (83% vs 69% of its area), so it keeps far
+    more matches at IoU ≥ 0.75 (F1 0.43 vs 0.11).
 
-**State of the study today.** Repeatability analysis is complete for two images. Human-reference accuracy is
-complete for one image (PT-R1). No other model family has been run in this repository yet. Comparisons across
-altitudes have a written design but no supporting data or image alignment. The 20-image weekly
-before/after collection is catalogued but not yet benchmarked.
+  This is one image, one annotator and two configurations. It does not show that either model is better in
+  general.
+
+**State of the study today.** Repeatability analysis is complete for two images with M08, and for PT-R1 with M09.
+Human-reference accuracy is complete for one image (PT-R1), for both models. The M09 run on PT-02 is prepared
+and dry-run tested, awaiting authorization. Comparisons across altitudes have a written design but no supporting
+data or image alignment. The 20-image weekly before/after collection is catalogued but not yet benchmarked.
 
 ---
 
@@ -115,7 +130,7 @@ these factors**.
 |---|---|---|
 | **M08** | Claude Opus 5.5 (vision-language model, structured JSON output) | **Completed** for two images (20 trials) |
 | M01, M02 | DeepForest | Recorded in `model_adapters.py` as an existing implementation with frozen results, but **those results are not in this repository** (`deepforest_images/` is empty). Not summarized here. |
-| M09 | OpenAI GPT-6.1 Sol (Responses API, high reasoning effort) | **Implemented and dry-run tested (4 November 2026); no trials run yet.** Pilot planned on the same two images. |
+| **M09** | OpenAI GPT-6.1 Sol (vision-language model, Responses API, high reasoning effort, structured JSON output) | **Completed for PT-R1** (10 trials, 4 November 2026). PT-02 dry-run tested, awaiting authorization. |
 | M10 | Gemini | **Planned**; no adapter implemented |
 | Copilot | Microsoft Copilot | **Deferred**: no programmatic endpoint identified |
 | M03–M07 | — | Not documented in this repository |
@@ -133,6 +148,26 @@ budget pressure can never change it (`BENCHMARK.md`; `model_config.json` in each
 | Output | Structured JSON against a fixed schema (schema SHA-256 `963a771d…`) |
 | Prompt | Fixed annotation prompt template (SHA-256 `e53504b3…`). Site, week and condition labels are inserted. |
 | Coordinates | Integer boxes on a 0–1000 grid, `[x_min, y_min, x_max, y_max]` |
+
+### M09 configuration and comparability with M08
+
+M09 uses configuration id `M09_high_90be168b98` (details in `BENCHMARK.md`). It sends exactly what M08 sends:
+* the **same image bytes**: the same 2212 × 1659 JPEG, verified by SHA-256 against every M08 trial;
+* the **same prompt text**;
+* the **same JSON schema**, enforced by strict structured output.
+
+It runs `gpt-6.1-sol` through the OpenAI Responses API with:
+* `reasoning.effort = high` and 32,000 maximum output tokens;
+* `detail: original` and image context compression disabled;
+* `store: false`, prompt caching off, and no tools, instructions or request chaining.
+
+No reasoning summaries are requested. Every trial echoed back the served model `gpt-6.1-sol`, high effort,
+compression disabled and `store: false`. Some differences cannot be removed:
+* "high" reasoning effort is not the same amount of computation for the two providers;
+* each provider encodes the image its own way, and OpenAI's internal processing resolution cannot be
+  observed, so token counts are not evidence of resolution;
+* Claude's responses contain readable thinking text, whereas M09's contain only opaque, encrypted reasoning
+  items and reasoning-token counts.
 
 ### Image preprocessing
 
@@ -278,12 +313,54 @@ At IoU ≥ 0.50, by trial:
 * trial 6 scored 2 / 4 / 9 (F1 0.235);
 * trial 10 scored 6 / 1 / 5 (F1 0.667).
 
+### M09 (GPT-6.1 Sol) on PT-R1, compared with M08
+
+Experiment `lowalt_pilot_ptr1_27m_m09_v1` ran on 4 November 2026. The first trial was run alone and reviewed.
+Trials 2–10 then ran on resume, with trial 1 kept byte-identical. All 10 trials succeeded on their first
+attempt. One trial needed a connection retry before reaching the model, with identical settings.
+
+Both models saw the same pixels, the same prompt and the same 11-tree reference, and are evaluated with the same
+code.
+
+| Measure (PT-R1, 10 trials each) | M08 Claude Opus 5.5 | M09 GPT-6.1 Sol |
+|---|---|---|
+| **Count consistency:** counts, trials 1–10 | 6,6,6,6,6,6,6,6,6,7 | 6,4,6,6,6,6,6,6,5,6 |
+| Mean (SD) · CV | 6.1 (0.32) · 5.2% | 5.7 (0.67) · 11.8% |
+| **Run-to-run spatial agreement**, IoU ≥ 0.50 (pairs in full agreement) | 0.919 ± 0.134 (28/45) | 0.838 ± 0.101 (7/45) |
+| IoU ≥ 0.75 | 0.885 ± 0.199 (28/45) | 0.816 ± 0.097 (4/45) |
+| IoU = 1.00 | 0.263 ± 0.309 (1/45) | 0 (0/45) |
+| **Human-reference accuracy**, IoU ≥ 0.50: precision / recall / F1 | 0.786 / 0.436 / 0.561 | 0.850 / 0.436 / 0.575 |
+| IoU ≥ 0.75 | 0.148 / 0.082 / 0.105 | 0.638 / 0.327 / 0.431 |
+| IoU = 1.00 | 0 / 0 / 0 | 0 / 0 / 0 |
+| **Localization**: mean IoU of matched boxes (IoU ≥ 0.50) | 0.663 | 0.802 |
+| Matched boxes lying entirely inside the human box | 46 of 48 | 34 of 48 |
+| Mean share of the human box's area covered | 0.69 | 0.83 |
+| Non-tree object (human-labelled NON_TREE) boxed | 10 of 10 trials | 4 of 10 trials |
+| Cost · mean output tokens per trial | $0.3439 · 450 | $0.5353 · 4,316 (4,133 reasoning) |
+
+Accuracy values are means over trials. The SDs are in `accuracy_summary.csv`; at IoU ≥ 0.50, M09's F1 is
+0.575 ± 0.043 and M08's is 0.561 ± 0.117.
+
+**Agreement between the two models.** Across all 100 M08 × M09 trial pairs, mean agreement is:
+* 0.828 ± 0.158 at IoU ≥ 0.50;
+* 0.552 ± 0.191 at IoU ≥ 0.75;
+* 0 at IoU = 1.00.
+
+The two models therefore usually box the same objects, but outline them differently.
+
+*Sources: `evaluation_results/model_comparison.csv`, `cross_model_agreement.csv`, `accuracy_summary.csv`,
+`reference_detection_frequency.csv`, `prediction_outcomes.csv`; figures K and L in
+`evaluation_results/figures/comparison/LA_PT-R1_27m/`.*
+
+![PT-R1: M08 vs M09](evaluation_results/figures/comparison/LA_PT-R1_27m/K_model_comparison.png)
+
 ---
 
 ## E. Key Scientific Findings
 
-All findings below come from two images and one model configuration. Treat them as hypotheses to test, not
-general conclusions.
+All findings below come from two images, two model configurations and one human reference. M09 was run on PT-R1
+only. Treat them as hypotheses to test, not general conclusions. Findings 1–6 were first established with M08;
+where M09 adds evidence, it is noted.
 
 ### 1. Similar detection counts can conceal spatial instability
 
@@ -345,6 +422,21 @@ Size is the most obvious pattern, but it is not the only difference. Several mis
 plantings on soil or in grass (figure J). With one image and 11 trees, the size association is a hypothesis to
 test, not an established threshold.
 
+**M09 misses the same five trees.** GPT-6.1 Sol never matched H04, H05, H06, H09 or H10 at IoU ≥ 0.50 in any of
+its 10 trials. Its only boxes near them were one box overlapping H06 at IoU 0.10 (trial 8). Both models were given
+the same pixels and the same prompt. The shared omission is therefore consistent with properties of these trees
+in this image, such as size at model-input resolution, contrast or ground cover. It is also consistent with the
+shared input itself: the same downscaling and the same instructions.
+
+These data cannot distinguish between these explanations, and they do not establish any of them. Two models are
+not a representative sample of detectors, and the reference comes from one annotator. A test would need the same
+trees at other scales (altitude series, tiling outside the frozen configuration), other detector families, and
+an independent second annotation.
+
+H07, the next-smallest found tree, separates the two models slightly. M08 found it once (trial 10, IoU 0.74).
+M09 never matched it, but three M09 trials (6–8) placed a loose box near it (IoU 0.18–0.31), which counts as a
+false positive plus a miss.
+
 ### 5. Box extent and localization strongly affect IoU-based accuracy
 
 Two different localization effects appear:
@@ -358,8 +450,23 @@ Two different localization effects appear:
   0.311), and the box for H08 fell to IoU 0.451. Each of these counts as both a false positive and a false
   negative.
 
-The IoU = 1.00 threshold is effectively unreachable against human boxes. The model's coordinate grid has a step of
-about 8 original pixels, while the human boxes are drawn to the pixel. At that threshold the metric measures
+**M09 draws larger boxes than M08, closer to this annotator's extent.**
+
+| | M08 | M09 |
+|---|---|---|
+| Matched boxes nested inside the human box | 46 of 48 | 34 of 48 |
+| Share of the human box's area covered | 0.69 | 0.83 |
+| Mean IoU of matched boxes | 0.66 | 0.80 |
+
+This one difference accounts for most of the gap between the models at IoU ≥ 0.75. Recall at IoU ≥ 0.75 is 0.327
+for M09 against 0.082 for M08, although both find the same trees at IoU ≥ 0.50. Three trees (H01, H03, H11)
+pass IoU ≥ 0.75 in all 10 M09 trials, against only H03 for M08 (in 9 trials).
+
+This is agreement with one annotator's box-drawing convention. It shows that the IoU ≥ 0.75 comparison depends
+on how crowns are outlined. It does not show that one model localizes trees "correctly" and the other does not.
+
+The IoU = 1.00 threshold is effectively unreachable against human boxes. Both models' coordinate grids have a step
+of about 8 original pixels, while the human boxes are drawn to the pixel. At that threshold the metric measures
 coordinate reproduction, not detection quality.
 
 ![PT-R1: human reference vs all trials' boxes](evaluation_results/figures/lowalt_pilot_ptr1_27m_v1/LA_PT-R1_27m/I_reference_vs_predictions_overview.png)
@@ -385,6 +492,36 @@ boxes per trial include one non-tree and miss six real trees. The count is not c
 not composed of the right trees either. For PT-02, the closeness to 24 is a numerical coincidence until shown
 otherwise, not validated accuracy.
 
+### 7. Two model families on the same image: separating repeatability, accuracy and localization
+
+The M08–M09 comparison on PT-R1 shows why the evaluation keeps these three questions apart. The two models rank
+differently on each.
+
+* **Run-to-run repeatability (same image, repeated trials): M08 is more repeatable.**
+  * Its spatial agreement is 0.919 at IoU ≥ 0.50, against 0.838 for M09.
+  * 28 of its 45 trial pairs agree fully, against 7 for M09.
+  * Its count CV is 5.2%, against 11.8%.
+  * M09 varies more between trials, though never in exactly the same way: no two M09 trials share identical
+    coordinates.
+* **Detection against the human reference at IoU ≥ 0.50: indistinguishable.**
+  * Recall is identical (0.436). Both models find the same five trees and miss the same five.
+  * M09's precision is slightly higher (0.850 against 0.786), mostly because it boxes the non-tree plant in 4
+    trials rather than all 10.
+  * The F1 difference (0.575 against 0.561) is well within M08's trial-to-trial spread.
+* **Localization against the human reference: M09's box extent is closer to this annotator's** (finding 5).
+  This is what drives the large difference at IoU ≥ 0.75.
+* **The systematic error is shared.** The non-tree plant fools both models: M08 every time, M09 in 4 of 10
+  trials, with nearly the same box (IoU 0.84–0.87 with M08's boxes). The same small trees are missed by both.
+
+**Scope.** These are differences in **run-to-run behaviour on one image**:
+* identical input, prompt and reference;
+* "high" reasoning effort that is not computationally equivalent across providers;
+* one annotator.
+
+They are not estimates of how either model performs across images, sites or altitudes. They do not support
+calling either model better in general. The next informative comparison is PT-02, a denser canopy with no
+accuracy reference, where only repeatability and between-model agreement can be compared.
+
 ---
 
 ## F. Methodological Limitations
@@ -392,7 +529,7 @@ otherwise, not validated accuracy.
 * **One completed human reference.** Every accuracy number comes from one image with 11 trees. It does not extend
   to PT-02, other altitudes, other dates or other models. **PT-02 currently supports repeatability analysis only,
   not validated individual-tree detection accuracy.**
-* **Small sample.** Twenty paid trials on two images. The trial-to-trial spread estimates *run-to-run* variation
+* **Small sample.** Thirty paid trials: M08 on two images and M09 on one. The trial-to-trial spread estimates *run-to-run* variation
   for one fixed input. It is not *image-to-image* or *site-to-site* variation, and it is not an independent
   estimate of accuracy: all ten trials share the same input, prompt and downscaling, and so share their errors.
 * **PT-02 crown boundaries.** In PT-02's dense canopy, individual crowns are often not visually separable. That
@@ -409,8 +546,16 @@ otherwise, not validated accuracy.
 * **Comparison against site-level inventories.** Inventory counts describe a whole site. Image coverage of each
   site is unconfirmed (`coverage_scope = UNKNOWN`), so inventory comparisons are context, never image-level
   ground truth. The pipeline never uses them to filter or correct predictions.
-* **One model configuration.** Every result describes M08 at one frozen configuration and one prompt. It says
-  nothing about other configurations or other model families.
+* **Two model configurations, unevenly covered.** M08 and M09 were each run at one frozen configuration with one
+  prompt, and M09 so far only on PT-R1. The results say nothing about other configurations, prompts or model
+  families.
+* **Comparability across providers is approximate.**
+  * Both models receive identical image bytes, prompt and schema.
+  * "High" reasoning effort is a provider-specific setting, not equal computation.
+  * Each provider encodes the image differently.
+  * OpenAI's internal processing resolution cannot be observed. M09's records document what was submitted and
+    requested (`detail: original`, compression disabled), not what was processed.
+  * M08's raw responses include readable thinking text. M09's include only opaque encrypted reasoning items.
 
 ---
 
@@ -421,7 +566,7 @@ otherwise, not validated accuracy.
 | Component | Role |
 |---|---|
 | `box_generation.py` | Fixed prompt, output schema and v2 image preprocessing; single-image command-line tool |
-| `model_adapters.py` | M08 adapter (retries, error classes, pricing), an offline mock adapter, and placeholders for planned models |
+| `model_adapters.py` | M08 (Anthropic) and M09 (OpenAI Responses API) adapters with retries, error classes, pricing and secret redaction; offline mock adapters; placeholders for planned models |
 | `benchmark_runner.py` | Manifest-driven repeated trials; project-wide spending ledger and budget guard; resume, round-robin and pause safeguards |
 | `make_manifest.py` | Builds the image manifest from file metadata; non-destructive updates and a review list |
 | `evaluate_consistency.py`, `evaluation_core.py` | Offline count, spatial and persistence analysis, with exact-arithmetic IoU and optimal one-to-one matching |
@@ -431,10 +576,20 @@ otherwise, not validated accuracy.
 
 ### Testing and validation
 
-The suite has **137 offline tests**, all passing, and makes no network calls:
+The suite has **192 offline tests**, all passing, and makes no network calls:
 * 77 cover the benchmark runner;
 * 44 cover the evaluation;
+* 55 cover M09, using a fake OpenAI client and an offline capture of the exact HTTP request body;
 * 16 cover reference import.
+
+A check that runs with the suite confirms that the frozen results, ledgers, human-review files and manifest are
+unchanged by the tests.
+
+**Reproducibility check (4 November 2026).** Everything was re-derived offline from the saved records:
+* Regenerating the full evaluation into a separate folder reproduced every CSV and both reports byte for byte.
+  Only the run timestamp, command line and recorded Git commit differed.
+* Re-running the preprocessing reproduced the exact submitted image bytes and prompt hash of all 30 M08 and M09
+  trials.
 
 They cover:
 * exact IoU at 0.50, 0.75 and 1.00;
@@ -463,12 +618,29 @@ Two data-integrity problems were caught and resolved without losing any human in
 
 | Item | Value |
 |---|---|
-| Paid trials | 20, all successful; no retries, refusals, invalid responses or interruptions |
-| Confirmed spend | $0.3439 (PT-R1) + $0.5741 (PT-02) = **$0.9179** |
-| Remaining under the $5 project limit | $4.0821 |
-| Observed cost per trial | $0.029–0.061, far below the $0.67 worst case reserved per request |
+| Item | Anthropic (M08) | OpenAI (M09) |
+|---|---|---|
+| Paid trials | 20, all successful | 10 (PT-R1), all successful; one pre-generation connection retry |
+| Confirmed spend | $0.3439 (PT-R1) + $0.5741 (PT-02) = **$0.9179** | **$0.5353** |
+| Remaining under each provider's separate $5 local limit | $4.0821 | $4.4648 |
+| Observed cost per trial | $0.029–0.061 (worst case reserved $0.67) | $0.045–0.074 (worst case reserved $0.335) |
 
-*Source: `spend_ledger/anthropic_api_ledger.jsonl`, `benchmark_results/*/counts_summary.csv`.*
+Each provider has its own ledger. All entries are priced from usage reported by the API.
+
+*Sources: `spend_ledger/anthropic_api_ledger.jsonl`, `spend_ledger/openai_api_ledger.jsonl`,
+`benchmark_results/*/counts_summary.csv`.*
+
+### Repository history note
+
+On 4 November 2026, eight commits were made under the project owner's identity between 14:55 and 15:02. Three
+of them, titled "test" (`44b97d1`, `4567eab`, `d24b940`), added M09 trials 2–4. `d24b940` also captured
+`evaluation_results/` while the evaluation was regenerating: its `evaluation_config.json` still reads
+`{"status": "incomplete"}`, and reports, crops and some figures are missing. Later commits (`a4b495f` through
+`254bc4b`) added the remaining trials, the complete evaluation outputs and the code changes.
+
+No commit altered model settings, the manifest, human annotations or frozen M08 records. `d24b940` should not be
+cited as an evaluation state. Use the complete outputs in the current tree, which the reproducibility check
+regenerates exactly.
 
 ---
 
@@ -484,7 +656,8 @@ Two data-integrity problems were caught and resolved without losing any human in
 | **In progress** | Confirmation of `coverage_scope` for all images, and of the week 1 condition labels |
 | **Planned** | M08 runs on more images: the remaining altitude frames and the weekly before/after collection |
 | **Planned** | Human references beyond PT-R1 |
-| **In progress** | M09 (GPT-6.1 Sol): adapter, cost ledger and comparison tooling built and tested offline; the 20-trial pilot awaits authorization |
+| **Completed** | M09 (GPT-6.1 Sol): adapter, separate cost ledger and model-comparison tooling; 10 trials on PT-R1 with consistency, accuracy and M08-vs-M09 evaluation |
+| **In progress** | M09 on PT-02: 10 trials prepared and dry-run tested, awaiting authorization (repeatability and between-model agreement only; no reference) |
 | **Planned** | M10 (Gemini) adapter and runs; importing the frozen DeepForest results (M01/M02) |
 | **Planned** | Across-altitude robustness analysis (design written in `EVALUATION.md`; requires image registration) |
 | **Deferred** | Copilot (no programmatic endpoint) |
@@ -518,11 +691,22 @@ marked *offline* need no API spending.
    * a point-based (stem or crown-centre) reference from the field inventory, if georeferenced stem positions
      exist;
    * restricting the reference to a sub-area where crowns are separable.
-6. **Model-family comparison.** Add M09 and M10 adapters, and bring the frozen DeepForest results into the same
-   record format. Then run each model on the same images with the same 10-trial protocol, and evaluate them with
-   the same model-agnostic code. Deterministic models such as DeepForest are expected to show perfect
-   repeatability. That contrast is itself informative.
-7. **Weekly collection.** After the week 1 labels and coverage are confirmed, the 20 weekly images at about 95 m
+6. **Model-family comparison.** Done for M09 on PT-R1. Next steps:
+   * the authorized M09 run on PT-02 (about $0.5–1.6 at the observed token usage; $3.35 worst case);
+   * an M10 (Gemini) adapter;
+   * importing the frozen DeepForest results into the same record format.
+
+   Each model should be run on the same images with the same 10-trial protocol and evaluated with the same
+   model-agnostic code. Deterministic models such as DeepForest are expected to show perfect repeatability. That
+   contrast is itself informative.
+7. **Probe the shared misses (offline first).** Before any new paid runs:
+   * tabulate the five trees both models never find against their crown size in model-input pixels, contrast and
+     background;
+   * check whether a second annotator also marks them.
+
+   Only then consider designs that change scale, such as the altitude series or a separately documented tiling
+   variant.
+8. **Weekly collection.** After the week 1 labels and coverage are confirmed, the 20 weekly images at about 95 m
    allow repeated-observation analysis over time, which is the core of the research question.
 
 ---
@@ -542,10 +726,16 @@ marked *offline* need no API spending.
 
 **Key data files**
 - Inputs: [manifests/manifest.csv](manifests/manifest.csv)
-- Saved trials, one folder per trial: `benchmark_results/lowalt_pilot_ptr1_27m_v1/` and
-  `benchmark_results/lowalt_pilot_pt02_64m_v1/`, each with `counts_long.csv`, `counts_summary.csv`,
-  `boxes_long.csv` and per-trial records
-- Spending: `spend_ledger/anthropic_api_ledger.jsonl`
+- Saved trials, one folder per trial:
+  - M08: `benchmark_results/lowalt_pilot_ptr1_27m_v1/` and `benchmark_results/lowalt_pilot_pt02_64m_v1/`
+  - M09: `benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/`
+
+  Each holds `counts_long.csv`, `counts_summary.csv`, `boxes_long.csv` and per-trial records. M09 records also
+  hold the exact request as sent (`api_request`) and the provider's echoed settings (`provider_response`).
+- Spending: `spend_ledger/anthropic_api_ledger.jsonl` (M08) and `spend_ledger/openai_api_ledger.jsonl` (M09)
+- Model comparison: [model_comparison.csv](evaluation_results/model_comparison.csv),
+  [cross_model_agreement.csv](evaluation_results/cross_model_agreement.csv), and section 8 of
+  `evaluation_report.md`
 - Count and spatial consistency:
   [count_consistency.csv](evaluation_results/count_consistency.csv),
   [iou_summary.csv](evaluation_results/iou_summary.csv),
@@ -578,5 +768,8 @@ marked *offline* need no API spending.
   - `H_reference_detection_frequency.png`
   - `I_reference_vs_predictions_overview.png`
   - `J_error_cases_iou050.png`
+- M09 per-model figures A–J: `evaluation_results/figures/lowalt_pilot_ptr1_27m_m09_v1/LA_PT-R1_27m/`
+- M08 vs M09 on PT-R1: `evaluation_results/figures/comparison/LA_PT-R1_27m/K_model_comparison.png` and
+  `L_models_side_by_side_iou050.png`
 - Human reference only: `evaluation_results/review/human_reference_LA_PT-R1_27m.jpg`; review contact sheets in
   `evaluation_results/review/`
