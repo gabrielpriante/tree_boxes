@@ -115,7 +115,7 @@ these factors**.
 |---|---|---|
 | **M08** | Claude Opus 5.5 (vision-language model, structured JSON output) | **Completed** for two images (20 trials) |
 | M01, M02 | DeepForest | Recorded in `model_adapters.py` as an existing implementation with frozen results, but **those results are not in this repository** (`deepforest_images/` is empty). Not summarized here. |
-| M09 | OpenAI / ChatGPT | **Planned**; no adapter implemented |
+| M09 | OpenAI GPT-6.1 Sol (Responses API, high reasoning effort) | **Implemented and dry-run tested (4 November 2026); no trials run yet.** Pilot planned on the same two images. |
 | M10 | Gemini | **Planned**; no adapter implemented |
 | Copilot | Microsoft Copilot | **Deferred**: no programmatic endpoint identified |
 | M03–M07 | — | Not documented in this repository |
@@ -484,7 +484,8 @@ Two data-integrity problems were caught and resolved without losing any human in
 | **In progress** | Confirmation of `coverage_scope` for all images, and of the week 1 condition labels |
 | **Planned** | M08 runs on more images: the remaining altitude frames and the weekly before/after collection |
 | **Planned** | Human references beyond PT-R1 |
-| **Planned** | Adapters and runs for M09 (ChatGPT) and M10 (Gemini); importing the frozen DeepForest results (M01/M02) |
+| **In progress** | M09 (GPT-6.1 Sol): adapter, cost ledger and comparison tooling built and tested offline; the 20-trial pilot awaits authorization |
+| **Planned** | M10 (Gemini) adapter and runs; importing the frozen DeepForest results (M01/M02) |
 | **Planned** | Across-altitude robustness analysis (design written in `EVALUATION.md`; requires image registration) |
 | **Deferred** | Copilot (no programmatic endpoint) |
 | **Deferred** | Tiling or cropping to raise model input resolution (outside the frozen configuration) |
