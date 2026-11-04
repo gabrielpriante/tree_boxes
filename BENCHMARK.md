@@ -67,7 +67,9 @@ API reference, prompt-caching guide and GPT-6 model guide on developers.openai.c
 | Output | Structured outputs: `text.format` `json_schema`, `strict: true`, with the **same schema object** as M08 (constrained decoding, like Anthropic's structured outputs). The API requires a schema name (`tree_detections`). |
 | Prompt | The identical M08 prompt text. It is sent as the user message after the image, as in M08, with no system/developer instructions. |
 | Image | The **identical M08 upload bytes** (2212 × 1659 JPEG, same SHA-256), sent as a base64 data URL with `detail: "original"` |
-| Image compression | `image.context_compression: "disabled"`. The SDK has no typed argument yet, so it is sent in the request body. |
+| Image compression | `image.context_compression: "disabled"`, sent as the top-level `image` object defined in the Responses API reference. The SDK has no typed argument yet, so it goes in the request body. An offline capture of the request confirmed the serialized body. |
+| Reasoning summaries | Not requested (no `reasoning.summary`); recorded as `summary: null` in the configuration |
+| Budget | $5, OpenAI-specific ledger (`--max-usd 5`) |
 | Independence | `store: false`. No tools, no `previous_response_id`/`conversation`, no metadata. Prompt caching is off (`prompt_cache_options.mode = "explicit"` with no breakpoints, so no cache reads or writes). `truncation: "disabled"`. |
 | Service tier | `default` (Standard), set explicitly so a project-level setting cannot change it |
 | Sampling | Provider defaults. `temperature`/`top_p` are unsupported with reasoning, and M08 set neither. |
@@ -79,7 +81,20 @@ models, `original` keeps the image's dimensions, `high` caps it at 2,500 patches
 the same 2212 × 1659 pixels Claude saw, and OpenAI recommends it for small-object detection. Whether Sol
 honours it is **unverified**. If the API rejects it, the first request fails with HTTP 400 and the run stops.
 It never falls back to another detail level. The pre-request image-token estimate (4,368 tokens: 70 × 52
-patches of 32 px × 1.2) uses the GPT-5.6/6 family formula. After the first trial, the reported usage replaces it.
+patches of 32 px × 1.2) uses the GPT-5.6/6 family formula and serves only the budget guard. After the first
+trial, the reported usage replaces it.
+
+**What the records can and cannot show.** Each M09 record contains:
+* the SHA-256 of the exact JPEG submitted (`image.upload_sha256`);
+* the exact request parameters as sent (`api_request`, with the image and prompt replaced by their hashes);
+* the response metadata echoed by the API (`provider_response`: model, status, service tier, `store`, reasoning
+  settings, effective image-compression policy);
+* the reported token usage, including reasoning tokens.
+
+These records document what was **submitted and requested**. They cannot establish the resolution at which
+OpenAI processed the image internally. The API does not report it, and reported input tokens are a billing
+quantity, not evidence of resolution. Results must therefore not claim full-resolution processing. Report it as
+"submitted at 2212 × 1659 with `detail: original`; internal processing not observable".
 
 **Safeguards specific to M09.**
 
@@ -133,6 +148,15 @@ python benchmark_runner.py --manifest manifests/manifest.csv --model M09 --mock 
 
 The live commands are the dry-run commands with `--execute` in place of `--dry-run`. Add `--resume` to
 continue a stopped run.
+
+**Pilot sequence (PT-R1).** Run one paid trial, review it, then resume the same experiment to 10 trials.
+Trial 1 is kept as recorded, and only the outstanding trials run. `--pause-after 1` stops at the first invalid,
+refused or truncated response.
+
+```powershell
+python benchmark_runner.py --manifest manifests/manifest.csv --model M09 --image-ids LA_PT-R1_27m --runs 1 --max-usd 5 --experiment-id lowalt_pilot_ptr1_27m_m09_v1 --pause-after 1 --execute
+python benchmark_runner.py --manifest manifests/manifest.csv --model M09 --image-ids LA_PT-R1_27m --runs 10 --max-usd 5 --experiment-id lowalt_pilot_ptr1_27m_m09_v1 --pause-after 1 --resume --execute
+```
 
 ## Files
 
