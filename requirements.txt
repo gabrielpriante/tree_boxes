@@ -1,4 +1,5 @@
 anthropic==1.15.0
+openai==3.45.0
 pillow==12.1.1
 python-dotenv
 pytest
