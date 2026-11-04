@@ -609,6 +609,9 @@ def run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image, run_dir,
         "software": adapter.software(),
         "started_utc": now_utc(),
     }
+    api_request = adapter.request_record(image["jpeg"], image["prompt"])
+    if api_request is not None:
+        base["api_request"] = api_request
     write_new_json(adir / "request.json", base)
     (adir / "prompt.txt").write_text(image["prompt"], encoding="utf-8")
     ledger.start(uid, {"experiment_id": experiment_id, "model_config_id": cfg_id,
