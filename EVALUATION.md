@@ -195,6 +195,26 @@ Against human whole-pixel boxes, IoU = 1.00 is effectively unreachable: Claude's
 quality. The report also measures how much of each matched Claude box lies inside its human box. If one box
 contains the other, IoU equals their area ratio, which separates box-extent differences from real misplacement.
 
+## Comparing model configurations on the same image
+
+When one image has results from more than one model configuration, for example M08 and M09 on
+`LA_PT-R1_27m`, each is first evaluated on its own, exactly as above. The run then adds:
+
+* `model_comparison.csv`: per image and configuration:
+  * trials, count mean/SD/CV;
+  * within-model agreement at 0.50, 0.75 and 1.00;
+  * mean precision, recall and F1, only where the image has a COMPLETE human reference.
+* `cross_model_agreement.csv`: per image, configuration pair and threshold, the agreement between every
+  trial of one model and every trial of the other (n_A × n_B pairs). It uses the same one-to-one exact-IoU
+  matching.
+* A section "Comparison between model configurations" in `evaluation_report.md`.
+
+Comparisons stay within one image (same SHA-256). Between-model agreement measures whether two approaches box
+the same places. It says nothing about which is correct. For PT-02, which has no reference, only consistency
+and between-model agreement are reported. Reasoning-effort settings are not computationally equivalent across
+providers, so model rows are configurations, not "equal-effort" conditions. These outputs appear only when such
+data exists. Nothing is produced for a single configuration.
+
 ## Adding other models
 
 `evaluation_core` only sees `DetectionSet` objects: boxes in original-image pixels, plus image id, SHA-256,
