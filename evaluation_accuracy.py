@@ -26,12 +26,13 @@ class AccuracyResult:
     image_id: str
     experiment_id: str
     reference: ec.DetectionSet
+    model: str = "model"
     per_trial: dict = field(default_factory=dict)     # threshold -> trial -> accuracy dict
     trial_rows: list = field(default_factory=list)
     summary_rows: list = field(default_factory=list)
     reference_rows: list = field(default_factory=list)
     outcome_rows: list = field(default_factory=list)
-    containment: dict = field(default_factory=dict)   # threshold label -> share of each matched Claude box inside its reference box
+    containment: dict = field(default_factory=dict)   # threshold label -> share of each matched model box inside its reference box
 
 
 def _stats(values):
@@ -47,7 +48,7 @@ def evaluate_accuracy(u, reference: ec.DetectionSet, status: str, thresholds, gr
     """u: ImageTrials-like (experiment_id, image_id, sets). group_of: detection uid -> IoU 0.50 group id.
     unit_of: detection uid -> (review_unit_id, human_label or '')."""
     group_of, unit_of = group_of or {}, unit_of or {}
-    res = AccuracyResult(u.image_id, u.experiment_id, reference)
+    res = AccuracyResult(u.image_id, u.experiment_id, reference, getattr(u, "model", "model"))
     ref_ids = {d.uid: d.label for d in reference.detections}
     sets = sorted(u.sets, key=lambda s: s.trial)
     ids = {"experiment_id": u.experiment_id, "image_id": u.image_id}
@@ -178,7 +179,7 @@ def report_section(res: AccuracyResult, thresholds, status_note: str, labels_by_
     w("\n### How often each reference tree was found\n")
     labs = [ec.threshold_label(t) for t in thresholds]
     w(f"| Reference | Size (px) | " + " | ".join(f"Found at IoU ≥ {lab}" for lab in labs)
-      + f" | When found at {labs[0]}: mean IoU · area ratio (Claude/human) · centre offset (px) "
+      + f" | When found at {labs[0]}: mean IoU · area ratio (model/human) · centre offset (px) "
         f"| Missed at {labs[0]}: nearest box in that trial |")
     w("|---|---|" + "---|" * len(labs) + "---|---|")
     by = {(r["reference_id"], r["iou_threshold"]): r for r in res.reference_rows}
@@ -198,12 +199,16 @@ def report_section(res: AccuracyResult, thresholds, status_note: str, labels_by_
         inside = sum(1 for s in shares if s >= 0.999)
         ratio = _stats(r["mean_area_ratio_pred_over_ref"] for r in res.reference_rows
                        if r["iou_threshold"] == labs[0] and r["trials_matched"])
-        w(f"\n**Box extent.** Of the {len(shares)} matched pairs at IoU ≥ {labs[0]}, {inside} Claude boxes lie entirely "
-          f"inside the human box (≥ 99.9% of their area). The mean share inside is {statistics.fmean(shares):.3f}. "
-          f"Averaged over the found trees, a Claude box covers {_f(ratio['mean'], 2)} of the human box's area. "
-          "When one box contains the other, IoU equals this area ratio. Claude's boxes are therefore systematically "
-          "tighter than the human boxes, which by itself keeps most matches below IoU 0.75. This is a difference in "
-          "box-extent convention, measured against this one annotator; it does not say which extent is correct.")
+        nested = inside / len(shares) >= 0.9
+        w(f"\n**Box extent.** Of the {len(shares)} matched pairs at IoU ≥ {labs[0]}, {inside} {res.model} boxes lie "
+          f"entirely inside the human box (≥ 99.9% of their area). The mean share inside is "
+          f"{statistics.fmean(shares):.3f}. Averaged over the found trees, a {res.model} box covers "
+          f"{_f(ratio['mean'], 2)} of the human box's area. When one box contains the other, IoU equals this area ratio. "
+          + ("These boxes are therefore systematically tighter than the human boxes, which by itself limits IoU. "
+             if nested else
+             "Most of these boxes are smaller than the human boxes, but they are not consistently nested inside them. ")
+          + "This is a difference in box-extent convention, measured against this one annotator; it does not say "
+            "which extent is correct.")
     w("\n### False positives\n")
     for t in thresholds[:2]:
         lab = ec.threshold_label(t)
@@ -257,7 +262,7 @@ LIMITATIONS = """## Limitations
   separate crowns. They do not generalise to denser canopy (PT-02), other altitudes or other models.
 * **One annotator, one pass.** The reference is a single expert annotation with no inter-annotator agreement.
   Box extents for irregular crowns are a judgement, which matters most at IoU ≥ 0.75.
-* **Coordinate grids differ.** Claude returns a 0–1000 grid (one step ≈ 8.2 × 6.1 original pixels). The human
+* **Coordinate grids differ.** The models return a 0–1000 grid (one step ≈ 8.2 × 6.1 original pixels). The human
   boxes use whole pixels. An IoU of exactly 1.00 is therefore practically unreachable. That threshold measures
   exact coordinate reproduction, not detection quality.
 * **Matching is per trial.** A trial's box that partly covers a tree but falls below the threshold counts as both
