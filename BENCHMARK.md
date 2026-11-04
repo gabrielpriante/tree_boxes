@@ -52,6 +52,88 @@ Anthropic's guide notes that Claude handles pixel coordinates better than normal
 coordinates. The 0–1000 convention is a fixed design decision here and was not changed, but it is
 worth stating as a methodological caveat.
 
+## M09: OpenAI GPT-6.1 Sol (implemented; not yet run)
+
+M09 is the first OpenAI comparison. It reuses the M08 pipeline unchanged: same manifest, preprocessing,
+prompt, schema, trial protocol, record format and evaluation. Only the transport differs. The model page,
+API reference, prompt-caching guide and GPT-6 model guide on developers.openai.com were checked on
+2026-11-04.
+
+| Setting | Value |
+|---|---|
+| Model | `gpt-6.1-sol` (Responses API, `POST /v1/responses`; Python SDK `openai==3.45.0`) |
+| Reasoning | `reasoning.effort = "high"` (the API default is `medium`; Sol does not support `none`) |
+| `max_output_tokens` | 32,000, the M08 limit. It covers reasoning plus visible output (model maximum 128,000). |
+| Output | Structured outputs: `text.format` `json_schema`, `strict: true`, with the **same schema object** as M08 (constrained decoding, like Anthropic's structured outputs). The API requires a schema name (`tree_detections`). |
+| Prompt | The identical M08 prompt text. It is sent as the user message after the image, as in M08, with no system/developer instructions. |
+| Image | The **identical M08 upload bytes** (2212 × 1659 JPEG, same SHA-256), sent as a base64 data URL with `detail: "original"` |
+| Image compression | `image.context_compression: "disabled"`. The SDK has no typed argument yet, so it is sent in the request body. |
+| Independence | `store: false`. No tools, no `previous_response_id`/`conversation`, no metadata. Prompt caching is off (`prompt_cache_options.mode = "explicit"` with no breakpoints, so no cache reads or writes). `truncation: "disabled"`. |
+| Service tier | `default` (Standard), set explicitly so a project-level setting cannot change it |
+| Sampling | Provider defaults. `temperature`/`top_p` are unsupported with reasoning, and M08 set neither. |
+| Config id | `M09_high_90be168b98` |
+
+**Image detail.** OpenAI's image-sizing table does not list `gpt-6.1-sol` yet. For the GPT-6 Astra and GPT-5.6
+models, `original` keeps the image's dimensions, `high` caps it at 2,500 patches (which would shrink our
+3,640-patch upload), and `low` reduces it to 512 px. `original` is therefore the only setting that can pass
+the same 2212 × 1659 pixels Claude saw, and OpenAI recommends it for small-object detection. Whether Sol
+honours it is **unverified**. If the API rejects it, the first request fails with HTTP 400 and the run stops.
+It never falls back to another detail level. The pre-request image-token estimate (4,368 tokens: 70 × 52
+patches of 32 px × 1.2) uses the GPT-5.6/6 family formula. After the first trial, the reported usage replaces it.
+
+**Safeguards specific to M09.**
+
+* The adapter records the model, service tier, `store` and effective image-compression policy echoed by
+  the API in each `record.json` (`provider_response`).
+* If OpenAI serves a model other than `gpt-6.1-sol`, or reports image compression as enabled, that trial is
+  recorded as an error with its actual cost, and the run stops.
+* HTTP 400/401/403/404/413/422 and `insufficient_quota` are fatal and never retried.
+* 408/409/429 (rate limits) and 5xx errors are retried up to 4 times, but only before generation starts. A
+  stream that fails after it opened is not retried and is charged at the worst case.
+* A response that reports `failed` or `incomplete` is charged at its reported usage.
+* `incomplete: max_output_tokens` maps to `max_tokens`, and `content_filter` and model refusals map to
+  `refusal`.
+* Anything resembling an API key is redacted from stored errors.
+* The client refuses an `OPENAI_BASE_URL` other than `https://api.openai.com/v1`.
+
+**Cost accounting.** M09 has its own ledger, `spend_ledger/openai_api_ledger.jsonl`, so `--max-usd` limits
+OpenAI spending separately from Anthropic spending. Prices per million tokens on the Standard tier:
+
+* input $2.00;
+* cached input $0.10 (not expected, because caching is off);
+* cache write $2.50;
+* output $10.00, including reasoning tokens.
+
+Prompts over 272K input tokens cost 2× input and 1.5× output (not reachable here). The prices are recorded in
+every record (`pricing`). The worst case per trial is about $0.335 (all 32,000 output tokens), so ten trials
+are guaranteed within $5 only if output stays well below the limit. The budget guard stops a run cleanly
+instead.
+
+**Known differences from M08, kept on purpose and documented.**
+
+* Reasoning effort settings are not computationally equivalent across providers.
+* M08's raw responses include Claude's thinking text. M09 records reasoning-token counts only. No reasoning
+  summary is requested, and with `store: false` no encrypted reasoning is kept.
+* The image passes through each provider's own encoder: 28-px patches for Claude, and 32-px patches for the
+  GPT-6 family (assumed).
+* M08 used Anthropic's `oversized_image: error` guard. For M09, the equivalent protections are
+  `detail: original` with compression disabled.
+
+```powershell
+# Check that the key is configured, without printing it
+python -c "import os, box_generation as bg; bg.load_env(); print('OPENAI_API_KEY configured:', bool(os.environ.get('OPENAI_API_KEY')))"
+
+# Dry runs (no OpenAI contact, nothing written)
+python benchmark_runner.py --manifest manifests/manifest.csv --model M09 --image-ids LA_PT-R1_27m --runs 10 --max-usd 5 --experiment-id lowalt_pilot_ptr1_27m_m09_v1 --dry-run
+python benchmark_runner.py --manifest manifests/manifest.csv --model M09 --image-ids LA_PT-02_64m --runs 10 --max-usd 5 --experiment-id lowalt_pilot_pt02_64m_m09_v1 --dry-run
+
+# Offline rehearsal with the M09 mock (writes only to benchmark_results_mock/)
+python benchmark_runner.py --manifest manifests/manifest.csv --model M09 --mock --image-ids LA_PT-R1_27m --runs 10 --max-usd 5 --experiment-id lowalt_pilot_ptr1_27m_m09_v1 --execute
+```
+
+The live commands are the dry-run commands with `--execute` in place of `--dry-run`. Add `--resume` to
+continue a stopped run.
+
 ## Files
 
 | File | Purpose |
@@ -61,7 +143,7 @@ worth stating as a methodological caveat.
 | `manifests/manifest.csv` | Image list and metadata (edit by hand to complete or confirm fields) |
 | `manifests/METADATA_REVIEW.md` | Fields awaiting your confirmation, October 24 images first |
 | `spend_ledger/anthropic_api_ledger.jsonl` | Project-wide spending ledger (created on the first paid request) |
-| `model_adapters.py` | `ClaudeAdapter` (M08), `MockAdapter` (offline), placeholders for M01/M02/M09/M10/Copilot |
+| `model_adapters.py` | `ClaudeAdapter` (M08), `OpenAIAdapter` (M09), `MockAdapter` / `MockOpenAIAdapter` (offline), placeholders for M01/M02/M10/Copilot |
 | `benchmark_runner.py` | Batch runner |
 | `tests/test_benchmark.py` | Offline tests (`python -m pytest tests -q`) |
 
@@ -226,8 +308,10 @@ Because the guard reserves the worst case, it can stop with some budget unused.
 
 ## Future adapters
 
-`model_adapters.PLANNED_ADAPTERS` lists M01/M02 (DeepForest), M09 (OpenAI), M10 (Gemini) and Copilot.
-A new adapter implements `config()`, `max_output_tokens()`, `cost_usd()` and `run()`, and inherits the same manifest,
+`model_adapters.PLANNED_ADAPTERS` lists M01/M02 (DeepForest), M10 (Gemini) and Copilot. M09 (OpenAI) is
+implemented, as described above. A new adapter implements `config()`, `max_output_tokens()`, `cost_usd()` and `run()`,
+and can override `image_tokens()`, `image_meta()` and `describe()` for provider-specific image accounting.
+It inherits the same manifest,
 trial numbering, folder layout and CSVs. Deterministic models such as DeepForest may produce identical results
 across trials; that's expected and should not be "fixed" by adding randomness. No DeepForest outputs exist in
 this repository (`deepforest_images/` is empty), so none were touched.
