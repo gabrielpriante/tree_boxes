@@ -29,6 +29,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from fractions import Fraction
+from itertools import combinations
 from pathlib import Path
 
 from PIL import Image
@@ -724,6 +725,12 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
             rows = [r for _, acc in accuracy_results for r in getattr(acc, attr)]
             write_csv(output_dir / name, list(rows[0]), rows)
 
+    # -- comparison between model configurations on the same image (only when there are several)
+    comparison_rows, cross_rows = model_comparison(units, results, stats, accuracy_results, thresholds)
+    if comparison_rows:
+        write_csv(output_dir / "model_comparison.csv", list(comparison_rows[0]), comparison_rows)
+        write_csv(output_dir / "cross_model_agreement.csv", list(cross_rows[0]), cross_rows)
+
     # -- altitude-series organisation
     alt_rows = altitude_series_rows(manifest, image_root, units) if manifest.exists() else []
     if alt_rows:
@@ -769,6 +776,8 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
 
     report = build_report(units, results, stats, inv_rows, review, review_summary, accuracy_rows, accuracy_notes,
                           alt_rows, figure_paths, output_dir, created)
+    if comparison_rows:
+        report += comparison_section(comparison_rows, cross_rows, thresholds)
     (output_dir / "evaluation_report.md").write_text(report, encoding="utf-8")
     if accuracy_results:
         (output_dir / "accuracy_report.md").write_text(
@@ -778,6 +787,72 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
     log(f"Wrote {output_dir}")
     return {"units": units, "results": results, "stats": stats, "review": review, "figures": figure_paths,
             "accuracy_rows": accuracy_rows, "accuracy": accuracy_results, "created_review_files": created}
+
+
+def model_comparison(units, results, stats, accuracy_results, thresholds) -> tuple:
+    """Side-by-side summary and between-model box agreement for images evaluated under more than one
+    model configuration. Boxes are compared only within the same image (same SHA-256)."""
+    by_image = {}
+    for u in units:
+        by_image.setdefault(u.image_id, []).append(u)
+    acc_by_key = {u.key: acc for u, acc in accuracy_results}
+    comparison, cross = [], []
+    for image_id, group in sorted(by_image.items()):
+        if len({u.model_config_id for u in group}) < 2:
+            continue
+        for u in group:
+            s = stats[u.key]
+            row = {"image_id": image_id, "site": u.site, "experiment_id": u.experiment_id,
+                   "model_config_id": u.model_config_id, "model": u.model, "successful_trials": u.n_trials,
+                   "mean_count": s["mean"], "sd_count": s["sd"], "cv_count": s["cv"]}
+            for t in thresholds:
+                tag = ec.threshold_tag(t)
+                row[f"within_model_agreement_{tag}"] = results[u.key][t].summary["agreement_mean"]
+            acc = acc_by_key.get(u.key)
+            for t in thresholds:
+                tag = ec.threshold_tag(t)
+                for m in ("precision", "recall", "f1"):
+                    row[f"{m}_{tag}"] = ea.summary_value(acc, t, m)["mean"] if acc else None
+            row["human_reference"] = "COMPLETE" if acc else "none (consistency only)"
+            comparison.append(row)
+        for a, b in combinations(sorted(group, key=lambda u: (u.model_config_id, u.experiment_id)), 2):
+            if a.model_config_id == b.model_config_id:
+                continue
+            for t in thresholds:
+                pairs = [ec.compare_sets(sa, sb, t) for sa in a.sets for sb in b.sets]
+                s = ec.summarize_pairs(pairs)
+                cross.append({"image_id": image_id, "model_config_a": a.model_config_id, "model_a": a.model,
+                              "experiment_a": a.experiment_id, "model_config_b": b.model_config_id,
+                              "model_b": b.model, "experiment_b": b.experiment_id,
+                              "iou_threshold": ec.threshold_label(t), "trial_pairs": s["n_pairs"],
+                              "agreement_mean": s["agreement_mean"], "agreement_sd": s["agreement_sd"],
+                              "agreement_min": s["agreement_min"], "agreement_max": s["agreement_max"],
+                              "matched_iou_mean": s["matched_iou_mean"]})
+    return comparison, cross
+
+
+def comparison_section(comparison, cross, thresholds) -> str:
+    L = ["\n## 8. Comparison between model configurations (same image)\n",
+         "Within-model agreement is repeatability (trial vs trial of one model). Between-model agreement compares "
+         "every trial of one model with every trial of the other, using the same one-to-one IoU matching. Neither "
+         "is accuracy. Accuracy columns appear only for images with a COMPLETE human reference. Different "
+         "providers' reasoning-effort settings are not computationally equivalent.\n",
+         "| Image | Model config | Trials | Mean count (CV) | Within-model agreement 0.50 / 0.75 / 1.00 | "
+         "F1 0.50 / 0.75 | Reference |",
+         "|---|---|---|---|---|---|---|"]
+    for r in comparison:
+        agree = " / ".join(fnum(r[f"within_model_agreement_{ec.threshold_tag(t)}"]) for t in thresholds)
+        f1 = " / ".join(fnum(r[f"f1_{ec.threshold_tag(t)}"]) for t in thresholds[:2])
+        cv = "–" if r["cv_count"] is None else f"{r['cv_count']:.1%}"
+        L.append(f"| {r['image_id']} | {r['model_config_id']} ({r['model']}) | {r['successful_trials']} | "
+                 f"{fnum(r['mean_count'], 1)} ({cv}) | {agree} | {f1} | {r['human_reference']} |")
+    L += ["", "| Image | Models | IoU ≥ | Trial pairs | Between-model agreement mean ± SD | Range | Matched IoU |",
+          "|---|---|---|---|---|---|---|"]
+    for r in cross:
+        L.append(f"| {r['image_id']} | {r['model_a']} vs {r['model_b']} | {r['iou_threshold']} | {r['trial_pairs']} | "
+                 f"{fnum(r['agreement_mean'])} ± {fnum(r['agreement_sd'])} | {fnum(r['agreement_min'])}–"
+                 f"{fnum(r['agreement_max'])} | {fnum(r['matched_iou_mean'])} |")
+    return "\n".join(L) + "\n"
 
 
 def accuracy_report(accuracy_results, thresholds, review_dir: Path, review: dict, figure_paths: dict, out: Path) -> str:
