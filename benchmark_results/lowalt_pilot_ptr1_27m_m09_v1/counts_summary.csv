@@ -1,2 +1,2 @@
 image_id,model,successful_trials,mean_tree_count,standard_deviation,minimum_count,maximum_count,coefficient_of_variation,experiment_id,model_code,model_config_id,site,week,condition,altitude_m,collection,trials_recorded,invalid_trials,refusal_trials,max_tokens_trials,unresolved_trials,total_cost_usd
-LA_PT-R1_27m,gpt-6.1-sol,1,6.0,,6,6,,lowalt_pilot_ptr1_27m_m09_v1,M09,M09_high_90be168b98,PT-R1,NOT_APPLICABLE,ALTITUDE_TEST,26.8,low_altitude,1,0,0,0,0,0.050838
+LA_PT-R1_27m,gpt-6.1-sol,10,5.7,0.675,4,6,0.1184,lowalt_pilot_ptr1_27m_m09_v1,M09,M09_high_90be168b98,PT-R1,NOT_APPLICABLE,ALTITUDE_TEST,26.8,low_altitude,10,0,0,0,0,0.53525
