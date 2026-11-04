@@ -57,7 +57,7 @@ SD is the sample SD (n−1) across trials. Pooled values sum TP, FP and FN over 
 
 ### How often each reference tree was found
 
-| Reference | Size (px) | Found at IoU ≥ 0.50 | Found at IoU ≥ 0.75 | Found at IoU ≥ 1.00 | When found at 0.50: mean IoU · area ratio (Claude/human) · centre offset (px) | Missed at 0.50: nearest box in that trial |
+| Reference | Size (px) | Found at IoU ≥ 0.50 | Found at IoU ≥ 0.75 | Found at IoU ≥ 1.00 | When found at 0.50: mean IoU · area ratio (model/human) · centre offset (px) | Missed at 0.50: nearest box in that trial |
 |---|---|---|---|---|---|---|
 | H01 | 713 × 795 | 10/10 | 10/10 | 0/10 | 0.805 · 0.80 · 9 | – |
 | H02 | 704 × 785 | 10/10 | 2/10 | 0/10 | 0.737 · 0.74 · 9 | – |
@@ -71,7 +71,7 @@ SD is the sample SD (n−1) across trials. Pooled values sum TP, FP and FN over 
 | H10 | 221 × 222 | 0/10 | 0/10 | 0/10 | – | no overlapping box in 10 trial(s) |
 | H11 | 758 × 751 | 10/10 | 10/10 | 0/10 | 0.852 · 0.89 · 25 | – |
 
-**Box extent.** Of the 48 matched pairs at IoU ≥ 0.50, 34 Claude boxes lie entirely inside the human box (≥ 99.9% of their area). The mean share inside is 0.984. Averaged over the found trees, a Claude box covers 0.83 of the human box's area. When one box contains the other, IoU equals this area ratio. Claude's boxes are therefore systematically tighter than the human boxes, which by itself keeps most matches below IoU 0.75. This is a difference in box-extent convention, measured against this one annotator; it does not say which extent is correct.
+**Box extent.** Of the 48 matched pairs at IoU ≥ 0.50, 34 gpt-6.1-sol boxes lie entirely inside the human box (≥ 99.9% of their area). The mean share inside is 0.984. Averaged over the found trees, a gpt-6.1-sol box covers 0.83 of the human box's area. When one box contains the other, IoU equals this area ratio. Most of these boxes are smaller than the human boxes, but they are not consistently nested inside them. This is a difference in box-extent convention, measured against this one annotator; it does not say which extent is correct.
 
 ### False positives
 
@@ -168,7 +168,7 @@ SD is the sample SD (n−1) across trials. Pooled values sum TP, FP and FN over 
 
 ### How often each reference tree was found
 
-| Reference | Size (px) | Found at IoU ≥ 0.50 | Found at IoU ≥ 0.75 | Found at IoU ≥ 1.00 | When found at 0.50: mean IoU · area ratio (Claude/human) · centre offset (px) | Missed at 0.50: nearest box in that trial |
+| Reference | Size (px) | Found at IoU ≥ 0.50 | Found at IoU ≥ 0.75 | Found at IoU ≥ 1.00 | When found at 0.50: mean IoU · area ratio (model/human) · centre offset (px) | Missed at 0.50: nearest box in that trial |
 |---|---|---|---|---|---|---|
 | H01 | 713 × 795 | 9/10 | 0/10 | 0/10 | 0.745 · 0.74 · 26 | t06:T002@0.333 |
 | H02 | 704 × 785 | 9/10 | 0/10 | 0/10 | 0.661 · 0.66 · 19 | t06:T003@0.311 |
@@ -182,7 +182,7 @@ SD is the sample SD (n−1) across trials. Pooled values sum TP, FP and FN over 
 | H10 | 221 × 222 | 0/10 | 0/10 | 0/10 | – | no overlapping box in 10 trial(s) |
 | H11 | 758 × 751 | 10/10 | 0/10 | 0/10 | 0.612 · 0.61 · 47 | – |
 
-**Box extent.** Of the 48 matched pairs at IoU ≥ 0.50, 46 Claude boxes lie entirely inside the human box (≥ 99.9% of their area). The mean share inside is 0.999. Averaged over the found trees, a Claude box covers 0.69 of the human box's area. When one box contains the other, IoU equals this area ratio. Claude's boxes are therefore systematically tighter than the human boxes, which by itself keeps most matches below IoU 0.75. This is a difference in box-extent convention, measured against this one annotator; it does not say which extent is correct.
+**Box extent.** Of the 48 matched pairs at IoU ≥ 0.50, 46 claude-opus-5-5 boxes lie entirely inside the human box (≥ 99.9% of their area). The mean share inside is 0.999. Averaged over the found trees, a claude-opus-5-5 box covers 0.69 of the human box's area. When one box contains the other, IoU equals this area ratio. These boxes are therefore systematically tighter than the human boxes, which by itself limits IoU. This is a difference in box-extent convention, measured against this one annotator; it does not say which extent is correct.
 
 ### False positives
 
@@ -242,7 +242,7 @@ Matched through the recorded detection ids, not the group names.
   separate crowns. They do not generalise to denser canopy (PT-02), other altitudes or other models.
 * **One annotator, one pass.** The reference is a single expert annotation with no inter-annotator agreement.
   Box extents for irregular crowns are a judgement, which matters most at IoU ≥ 0.75.
-* **Coordinate grids differ.** Claude returns a 0–1000 grid (one step ≈ 8.2 × 6.1 original pixels). The human
+* **Coordinate grids differ.** The models return a 0–1000 grid (one step ≈ 8.2 × 6.1 original pixels). The human
   boxes use whole pixels. An IoU of exactly 1.00 is therefore practically unreachable. That threshold measures
   exact coordinate reproduction, not detection quality.
 * **Matching is per trial.** A trial's box that partly covers a tree but falls below the threshold counts as both
