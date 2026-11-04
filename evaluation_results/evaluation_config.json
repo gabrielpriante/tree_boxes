@@ -1,1 +1,317 @@
-{"status": "incomplete"}
+{
+  "algorithm_version": "1.0.0",
+  "iou_thresholds": [
+    "1/2",
+    "3/4",
+    "1"
+  ],
+  "iou_definition": "exact rational IoU in original-image pixels; box = 0-1000 coordinate * image size / 1000; IoU = 1 only for identical geometry",
+  "matching": "one-to-one; maximize number of pairs with IoU >= threshold, ties broken by total IoU (scipy.optimize.linear_sum_assignment on K + IoU weights)",
+  "agreement": "2 * matched / (n_a + n_b) per trial pair; undefined when both trials are empty",
+  "persistence": "connected components of pairwise matches; CONSISTENT only if one detection per trial and every member pair directly matched; otherwise AMBIGUOUS (not split)",
+  "review_units_threshold": "0.50",
+  "inputs": [
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/counts_long.csv",
+      "sha256": "0b0eb6feb455897744bd3d68b0c3c657b6d5b42e3f343d9c18ea234e35ee7390"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/boxes_long.csv",
+      "sha256": "214c41dd9889f5a4475172f9630bf83c132e8d480511797410650a846f14e9ec"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/counts_summary.csv",
+      "sha256": "a359b598a2ccae0d1f0e4f77a04d63f83808853aab12bb29ee162a45b3ef7d82"
+    },
+    {
+      "path": "drone_images/height/PT_02/PT_02_64m.JPG",
+      "sha256": "25f3c331564db9cc9ada0e151bbec16506b8702dd34ce245dc5c671b427c85b4"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_01/attempt_01/record.json",
+      "sha256": "f3215808498320417a2921e09749ba72fafd249a8043d7a4f30e43174bcad764"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_01/attempt_01/detections.json",
+      "sha256": "aeaf34fa8078a108d99b57578dc19af015cc94a50a41a8229e437c54bd58a0e8"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_02/attempt_01/record.json",
+      "sha256": "684a218fe945e1c8178ba625065dc7dfff15347960a8572572d7a93d00cf798f"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_02/attempt_01/detections.json",
+      "sha256": "0bde10d8e68941fe9958b75fa25cb203ec02c7da2cc67bb4a35a4872f122c5a6"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_03/attempt_01/record.json",
+      "sha256": "53317a23227cf4ff18d22d59e75d58c5cc35da0be6ba5e140cbfd6217e641965"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_03/attempt_01/detections.json",
+      "sha256": "cae6bf59f1087dd7da86bd40f9e4c9a410204b0621e33d23aa848b1ab970106c"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_04/attempt_01/record.json",
+      "sha256": "5bbcc9a24c2d0805eda67dedd14210c90a96b661f282fd56834e67d722065d02"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_04/attempt_01/detections.json",
+      "sha256": "f9e1cbfe1a35d03c361bdc6e0aea7e7249c2e38b27d8447f3843b1213a364b77"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_05/attempt_01/record.json",
+      "sha256": "0375e139e31111b5f2fe982e08b6db3e4c4650fadde98a1c3c903560c6c3028a"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_05/attempt_01/detections.json",
+      "sha256": "191040e167d84508352db2c39ad669b0ce0e6a7b52c0587a8ae4a9d55e59b0e3"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_06/attempt_01/record.json",
+      "sha256": "c81dddb894d49699545a83fa852cfe43177bdbcd358095d209587281ae2ce95f"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_06/attempt_01/detections.json",
+      "sha256": "e137d7b04824dfbd1e1a7e56440fee03ccff5dd5246bba59da0b6f3113734017"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_07/attempt_01/record.json",
+      "sha256": "a38adc87ed3b778e8443ce47be63404789f471f1c5e51cd7f67f52d74e722d30"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_07/attempt_01/detections.json",
+      "sha256": "bccf260e2f21e73a221df8ce8dc55e75dbc8082c40a9b9e6ffec15e512a9494a"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_08/attempt_01/record.json",
+      "sha256": "665a9d098ce94ddc3ea9b2fbd97d7b7084e04b6a23678a613c84667d33c885e9"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_08/attempt_01/detections.json",
+      "sha256": "5ddf8d4822b931b1d2227d794c83a74570bdbf884de6172402d0da04a1da9b28"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_09/attempt_01/record.json",
+      "sha256": "de3b8a0ac7314370c9b10861598f2c9ec606d72c8c79229ab714a888e62ab32b"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_09/attempt_01/detections.json",
+      "sha256": "098754dcb5677ec07b28e5b1d8fc1992029e360d3288cb1a18f01753c53a5bd3"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_10/attempt_01/record.json",
+      "sha256": "71d4110447e0c7dde732470aeb59ff53e4df2933715b36dbbec6d840634a7857"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_pt02_64m_v1/M08_high_a28fe01ac5/LA_PT-02_64m/trial_10/attempt_01/detections.json",
+      "sha256": "101ba801e0cc690fe51de6e100cfd365758eb24db564ef286f0906da9d41d048"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/counts_long.csv",
+      "sha256": "20a5fa9953a90507d843f67ffb9bbaebfeb251ad09a1633ecb4de6701459977a"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/boxes_long.csv",
+      "sha256": "54163fd9e8f218f1dd9a36a88f01071b5944ca716fdc2087e79dc339fd341a98"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/counts_summary.csv",
+      "sha256": "0f038dc531f4cd1df736d6738092e871608c4aeb407636fc034a7b96c245def3"
+    },
+    {
+      "path": "drone_images/height/PT_R1/PT_R1_27m.JPG",
+      "sha256": "f3ba7ede6a0fc191836d7d548a098e5dcb86b2b84994d781b494f7723b56f781"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_01/attempt_01/record.json",
+      "sha256": "e36260499b13042f0302b494f257b16f063ca44050c09c4f60f3742ffa326a50"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_01/attempt_01/detections.json",
+      "sha256": "9b7b492223d5d082ceaa1e6b59f9d9bdd833cf68a0cc2423341312fa5515e2f3"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_02/attempt_01/record.json",
+      "sha256": "ec881776e46d48d11f3e02aeeabf9ab06254402c17c27ddf77ad826607b7f809"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_02/attempt_01/detections.json",
+      "sha256": "154ce534375a3307b4561a5c9cd4b97254a9265171b413d92662267e82b910ba"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_03/attempt_01/record.json",
+      "sha256": "4a55789a0b7a0e952070b2a39fa5857e7076814406d141316bb23d3986e670bc"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_03/attempt_01/detections.json",
+      "sha256": "11c8392bc1e56e3e7b16f450ed1c5606ed5817fc7aee36c6330b5ef26df33baf"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_04/attempt_01/record.json",
+      "sha256": "59b12f9b60dbde859a0f86d8a24c22556287b39c216a2cb6afac733714025d92"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_04/attempt_01/detections.json",
+      "sha256": "388d4af3c336dc1d393aef592f7207cd6f927c392043347339225672d225c7d0"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_05/attempt_01/record.json",
+      "sha256": "7d37651a010b303e829d63dec358e1ccfa6e2d797262154af5c4ba9fee83901d"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_05/attempt_01/detections.json",
+      "sha256": "d2617343249d157e8e7209ee41b26e398efc6b251b636b72375792cffd32ea5d"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_06/attempt_01/record.json",
+      "sha256": "72eabac553936b790b0783ff568e766509514018b2fd916bc8b78b6ed46f189c"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_06/attempt_01/detections.json",
+      "sha256": "579fe7e644261ca0a7869910807f19bb6cde0570f6f5bcf1a5fc637365c4bd9e"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_07/attempt_01/record.json",
+      "sha256": "472349bd8e70f5a0fd6d13aaa60c6da4986751db8d02da2afcd5c08bbcf9db09"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_07/attempt_01/detections.json",
+      "sha256": "4840b4c3bfb0f11537a6d4a238246b9e8ac739a4203f6f54a2e44c4a9bf12aa8"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_08/attempt_01/record.json",
+      "sha256": "2e5848a32b2e1a65dd5f5c34eddb5dd0f63fbc39c011c801b6f9f1156c182e10"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_08/attempt_01/detections.json",
+      "sha256": "6323a463276a0d0ccc40e18c4d9305b2db39e67148fd79d88730006269414a46"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_09/attempt_01/record.json",
+      "sha256": "3ec324987838d648ff0eaa1461a2afa4d6ce63b8f811334b62f5815dd4635b01"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_09/attempt_01/detections.json",
+      "sha256": "301f88172f654bc63cb2edd151eac15773bdc2c311e3b4bdcec94392cb8a6b2a"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_10/attempt_01/record.json",
+      "sha256": "987e8ac26435c20c528f8c8a840fc3b340f2b451ba90eaeb0f8847304b958d1b"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/M09_high_90be168b98/LA_PT-R1_27m/trial_10/attempt_01/detections.json",
+      "sha256": "d5481566ae869fd40e6f4ed1e38bd049714a87bea6667672766f4b36b88903b3"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/counts_long.csv",
+      "sha256": "91f87a2a027b2343c55ff0ef7d40bc8523a9249d173beb43280f58114f55c1b5"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/boxes_long.csv",
+      "sha256": "75cdde015875d7f2864a373c33ecde8dc8eb8859cce22cdf1564d54225cb219b"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/counts_summary.csv",
+      "sha256": "3515135f92a189c1c8421369d7590467161a0f06ee3f28fbdfbaa6e4f04d23d3"
+    },
+    {
+      "path": "drone_images/height/PT_R1/PT_R1_27m.JPG",
+      "sha256": "f3ba7ede6a0fc191836d7d548a098e5dcb86b2b84994d781b494f7723b56f781"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_01/attempt_01/record.json",
+      "sha256": "762644cbafa57c102108d9490705c4c644a41e4153d4d4667248c69054d17505"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_01/attempt_01/detections.json",
+      "sha256": "68bce285a7f78f332d746814a1212105a60db001cc3c1cfb3fb1186acf6e0144"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_02/attempt_01/record.json",
+      "sha256": "dff97a1a6439df2bb6a7fda444bcf74379699ae862d464a370a0433386911528"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_02/attempt_01/detections.json",
+      "sha256": "faff1e9b187f31254b8097e1c0149ead214d074835bd8e391e7d175fe80679f9"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_03/attempt_01/record.json",
+      "sha256": "1b97fa6abc00e2d720f7fe8d315a59537835b74abef9e0e491d94094533e8a50"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_03/attempt_01/detections.json",
+      "sha256": "ed9f999424a1becff7ebf20b9368a945912751f2cf49037dc42e5ab29a7d6e1b"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_04/attempt_01/record.json",
+      "sha256": "f65b409faa889989bb54f1a8ef50d6abd2f52c3b57bcee362be9631c6426bc5d"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_04/attempt_01/detections.json",
+      "sha256": "d7b604b38a4891db8d2772b6853a962c002fec30b098de2b83ce218ad67742ef"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_05/attempt_01/record.json",
+      "sha256": "d1a7f808c30e444a1e3968b2cf560d3592734c2731504b2f7486ba9e2870e3eb"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_05/attempt_01/detections.json",
+      "sha256": "b9722474bd239531731140cd95ffbbd12e6022864e6ae8d544222d0eb8df26f0"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_06/attempt_01/record.json",
+      "sha256": "6a13f400a484756efd7d17e985fd285de84e4b8ef20a37928e21307988969738"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_06/attempt_01/detections.json",
+      "sha256": "e7b6075b623e97b972acc19035718b09bafad9e372ae7283188cf58507d4d9c2"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_07/attempt_01/record.json",
+      "sha256": "01a33feb743c008003029e7f07c71eb5c9d22f9c4f38f654af5ce5d8148d6d4c"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_07/attempt_01/detections.json",
+      "sha256": "404f559b6bf7066498c15e2456ab7cadb21959f70d6fdcafc2ef79bcccd7e663"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_08/attempt_01/record.json",
+      "sha256": "1520a418eec656296f270073e4bb003c1d88f886a2b9e93453b4e984b4b9bda4"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_08/attempt_01/detections.json",
+      "sha256": "d7b604b38a4891db8d2772b6853a962c002fec30b098de2b83ce218ad67742ef"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_09/attempt_01/record.json",
+      "sha256": "916c5ff9e65265c8f98d4ba5c7bc76b1414b736a441c904bf30826c233c851b0"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_09/attempt_01/detections.json",
+      "sha256": "c170039ad614818a960ade1416b1e3ba52b8ce9ab37c81778f2a92683ee02747"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_10/attempt_01/record.json",
+      "sha256": "0317d7766915bf23c67f1035b55f2c96ae961c9e4afcc5ca67ec06fd22425272"
+    },
+    {
+      "path": "benchmark_results/lowalt_pilot_ptr1_27m_v1/M08_high_a28fe01ac5/LA_PT-R1_27m/trial_10/attempt_01/detections.json",
+      "sha256": "aa28c1a1debd6d83f7a89e168d8e0d777ff37afbfe4926fd088ea0aa9e4eea2c"
+    }
+  ],
+  "software": {
+    "python": "3.13.12",
+    "numpy": "2.4.3",
+    "scipy": "1.17.1",
+    "matplotlib": "3.10.8",
+    "pillow": "12.1.1"
+  },
+  "code": {
+    "commit": "d24b940c258f1230177438bb2f99fa271f318ce3",
+    "evaluation_code_uncommitted": true
+  },
+  "generated_utc": "2026-11-04T19:55:46+00:00",
+  "command": "evaluate_consistency.py",
+  "api_requests_made": 0
+}

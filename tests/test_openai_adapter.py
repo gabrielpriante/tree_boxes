@@ -627,6 +627,14 @@ class TestPilotProtocol(RunnerTest):
         self.assertEqual(img["detail"], "original")
         self.assertNotIn("summary", req["reasoning"])
 
+    def test_pause_after_one_does_not_stop_successful_trials_on_resume(self):
+        a, _ = adapter()
+        self.run_m09(a, runs=1, pause_after=1)
+        b, client = adapter()
+        report = self.run_m09(b, runs=10, resume=True, pause_after=1)
+        self.assertEqual((report["stopped"], report["trials_run"], len(client.calls)), (None, 9, 9))
+        self.assertEqual(report["incomplete"], {})
+
     def test_pause_after_one_stops_on_first_incomplete_response(self):
         a, client = adapter([make_response(text='{"si', status="incomplete", reason="max_output_tokens")])
         report = self.run_m09(a, runs=10, pause_after=1)
@@ -692,6 +700,32 @@ class TestEvaluationCompatibility(RunnerTest):
         report = (self.tmp / "eval" / "evaluation_report.md").read_text(encoding="utf-8")
         self.assertIn("Comparison between model configurations", report)
         self.assertIn("not computationally equivalent", report)
+
+    def test_comparison_figures_with_and_without_reference(self):
+        br.run_benchmark(self.rows(), ma.MockAdapter(), self.out, "EXP_M08", runs=2, max_usd=50, dry_run=False,
+                         ledger_path=self.tmp / "m08.jsonl", log=quiet)
+        a, _ = adapter()
+        self.run_m09(a, ids=("IMG_A", "IMG_B"), runs=2)
+        review = self.tmp / "review"
+        ev.run(self.out, None, self.tmp / "eval", review, self.manifest, self.tmp, figures=False, log=quiet)
+        with (review / "reference_boxes.csv").open("a", newline="") as f:          # IMG_A gets a complete reference
+            csv.writer(f).writerows([[f"H{i}", "IMG_A", 10 + 60 * i, 20, 50 + 60 * i, 80, "TREE", "", "", ""]
+                                     for i in range(1, 4)])
+        rows = list(csv.DictReader((review / "reference_status.csv").open()))
+        for r in rows:
+            r["reference_status"] = "COMPLETE" if r["image_id"] == "IMG_A" else "NONE"
+        with (review / "reference_status.csv").open("w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0]))
+            w.writeheader()
+            w.writerows(rows)
+        res = ev.run(self.out, None, self.tmp / "eval", review, self.manifest, self.tmp, figures=True,
+                     full_res_maps=False, log=quiet)
+        for image_id in ("IMG_A", "IMG_B"):
+            paths = res["figures"][f"comparison/{image_id}"]
+            self.assertEqual([p.name for p in paths], ["K_model_comparison.png", "L_models_side_by_side_iou050.png"])
+            self.assertTrue(all(p.exists() for p in paths))
+        acc_units = {u.key for u, _ in res["accuracy"]}
+        self.assertEqual({k.split("/")[1] for k in acc_units}, {"IMG_A"})        # no accuracy for IMG_B
 
     def test_single_model_produces_no_comparison(self):
         a, _ = adapter()

@@ -648,3 +648,157 @@ def error_cases(u, acc, t, full, path):
                  fontsize=11)
     return finish(fig, path, "FP tiles group a recurring false positive by its IoU 0.50 consistency group. "
                              "Missed-tree tiles show the reference box and nearby false positives. " + ACCURACY_NOTE)
+
+
+# ------------------------------------------------------------------ comparison between model configurations (same image)
+
+MODEL_COLORS = ["#4c72b0", "#dd8452", "#55a868", "#c44e52"]
+COMPARISON_NOTE = ("Same image, same preprocessed bytes and prompt for every model. Spread between trials is run-to-run "
+                   "variation on ONE image, not independent-image performance. Reasoning-effort settings are not "
+                   "computationally equivalent across providers.")
+
+
+def _model_label(u):
+    return f"{u.model}\n({u.model_config_id})"
+
+
+def comparison_figures(image_id: str, units: list, results: dict, stats: dict, acc_by_key: dict, cross_rows: list,
+                       out: Path) -> list:
+    fig_dir = out / "figures" / "comparison" / image_id
+    units = sorted(units, key=lambda u: (u.model_config_id, u.experiment_id))
+    with Image.open(units[0].image_path) as im:
+        full = im.convert("RGB")
+    return [model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_rows,
+                                    fig_dir / "K_model_comparison.png"),
+            models_side_by_side(image_id, units, acc_by_key, full, fig_dir / "L_models_side_by_side_iou050.png")]
+
+
+def model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_rows, path):
+    thresholds = list(next(iter(results.values())))
+    have_acc = all(u.key in acc_by_key for u in units)
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10.5))
+    fig.subplots_adjust(top=0.88, bottom=0.1, hspace=0.42, wspace=0.22)
+    (a1, a2), (a3, a4) = axes
+    rng = np.random.default_rng(0)
+
+    for i, u in enumerate(units):
+        counts, s = u.counts, stats[u.key]
+        a1.scatter(i + rng.uniform(-0.12, 0.12, len(counts)), counts, s=28, color=MODEL_COLORS[i % 4], zorder=3)
+        a1.errorbar(i + 0.28, s["mean"], yerr=s["sd"] or 0, fmt="o", color="black", capsize=5)
+        cv = "–" if s["cv"] is None else f"{s['cv']:.1%}"
+        a1.text(i + 0.33, s["mean"], f" mean {s['mean']:.1f}\n SD {s['sd'] or 0:.2f}\n CV {cv}", fontsize=8, va="center")
+    a1.set_xticks(range(len(units)), [_model_label(u) for u in units], fontsize=8)
+    a1.set_xlim(-0.5, len(units) - 0.1)
+    a1.yaxis.get_major_locator().set_params(integer=True)
+    a1.set_ylabel("boxes per trial")
+    a1.set_title("Count per trial (dots) and mean ± SD", fontsize=10)
+
+    labels = [_thr_text(t) for t in thresholds]
+    x = np.arange(len(thresholds))
+    width = 0.8 / (len(units) + 1)
+    for i, u in enumerate(units):
+        means = [results[u.key][t].summary["agreement_mean"] or 0 for t in thresholds]
+        sds = [results[u.key][t].summary["agreement_sd"] or 0 for t in thresholds]
+        a2.bar(x + (i - len(units) / 2) * width, means, width, yerr=sds, capsize=3, color=MODEL_COLORS[i % 4],
+               label=f"within {u.model}")
+    between = [next((r["agreement_mean"] for r in cross_rows if r["iou_threshold"] == ec.threshold_label(t)), 0) or 0
+               for t in thresholds]
+    between_sd = [next((r["agreement_sd"] for r in cross_rows if r["iou_threshold"] == ec.threshold_label(t)), 0) or 0
+                  for t in thresholds]
+    a2.bar(x + (len(units) / 2) * width, between, width, yerr=between_sd, capsize=3, color="#bbbbbb", hatch="//",
+           edgecolor="#555", label="between models")
+    a2.set_xticks(x, labels)
+    a2.set_ylim(0, 1.12)
+    a2.set_ylabel("pairwise agreement 2M/(nA+nB)")
+    a2.legend(fontsize=8, loc="upper right")
+    a2.set_title("Spatial agreement: within each model and between models", fontsize=10)
+
+    if have_acc:
+        metrics = ("precision", "recall", "f1")
+        groups = [(t, m) for t in thresholds[:2] for m in metrics]
+        xg = np.arange(len(groups))
+        w = 0.8 / len(units)
+        for i, u in enumerate(units):
+            acc = acc_by_key[u.key]
+            vals = [[a[m] for a in acc.per_trial[t].values() if a[m] is not None] for t, m in groups]
+            means = [np.mean(v) if v else 0 for v in vals]
+            sds = [np.std(v, ddof=1) if len(v) > 1 else 0 for v in vals]
+            a3.bar(xg + (i - (len(units) - 1) / 2) * w, means, w, yerr=sds, capsize=3, color=MODEL_COLORS[i % 4],
+                   label=u.model)
+            for xi, m in zip(xg + (i - (len(units) - 1) / 2) * w, means):
+                a3.text(xi, m + 0.03, f"{m:.2f}", ha="center", fontsize=7)
+        a3.set_xticks(xg, [f"{m}\n{_thr_text(t)}" for t, m in groups], fontsize=8)
+        a3.set_ylim(0, 1.12)
+        a3.legend(fontsize=8)
+        a3.set_title("Accuracy against the human reference (mean ± SD over trials)", fontsize=10)
+
+        refs = [d.label for d in acc_by_key[units[0].key].reference.detections]
+        xr = np.arange(len(refs))
+        for i, u in enumerate(units):
+            found = _ref_found(acc_by_key[u.key], thresholds[0])
+            a4.bar(xr + (i - (len(units) - 1) / 2) * w, [found[r] for r in refs], w, color=MODEL_COLORS[i % 4],
+                   label=u.model)
+        n = max(_n_trials(acc_by_key[u.key]) for u in units)
+        a4.set_xticks(xr, refs)
+        a4.set_ylim(0, n + 1)
+        a4.axhline(n, color="#555", ls=":", lw=1)
+        a4.set_ylabel(f"trials that found the tree (of {n})")
+        a4.legend(fontsize=8)
+        a4.set_title(f"Each human reference tree: trials that found it at {_thr_text(thresholds[0])}", fontsize=10)
+    else:
+        for ax in (a3, a4):
+            ax.set_axis_off()
+        a3.text(0.5, 0.5, "No COMPLETE human reference for this image:\naccuracy is not computed "
+                          "(consistency and between-model agreement only).", ha="center", va="center",
+                transform=a3.transAxes, fontsize=11)
+    fig.suptitle(f"K. Model comparison on {image_id} ({units[0].site}) · "
+                 + " vs ".join(f"{u.model} ({u.n_trials} trials)" for u in units), fontsize=12)
+    return finish(fig, path, COMPARISON_NOTE)
+
+
+def models_side_by_side(image_id, units, acc_by_key, full, path, t=ec.THRESHOLDS[0]):
+    lab = ec.threshold_label(t)
+    scale = PLOT_WIDTH / full.width
+    thumb = np.asarray(full.resize((PLOT_WIDTH, round(full.height * scale)), Image.LANCZOS))
+    fig, axes = plt.subplots(1, len(units), figsize=(8 * len(units), 6.9), squeeze=False)
+    fig.subplots_adjust(top=0.86, bottom=0.14, left=0.01, right=0.99, wspace=0.03)
+    any_acc = False
+    for ax, u in zip(axes[0], units):
+        ax.imshow(thumb)
+        ax.set_axis_off()
+        acc = acc_by_key.get(u.key)
+        if acc:
+            any_acc = True
+            det_box = {d.uid: d.box for s in u.sets for d in s.detections}
+            for r in acc.outcome_rows:
+                if r["iou_threshold"] == lab:
+                    b = [float(v) * scale for v in det_box[r["detection_uid"]]]
+                    ax.add_patch(Rectangle((b[0], b[1]), b[2] - b[0], b[3] - b[1], fill=False, lw=0.7,
+                                           edgecolor=OUTCOME_COLORS[_outcome_key(r)]))
+            found, n = _ref_found(acc, t), _n_trials(acc)
+            for d in acc.reference.detections:
+                b = [float(v) * scale for v in d.box]
+                color = REF_FOUND_COLOR if found[d.label] == n else MISSED_COLOR
+                ax.add_patch(Rectangle((b[0], b[1]), b[2] - b[0], b[3] - b[1], fill=False, lw=1.6, ls="--",
+                                       edgecolor=color))
+                ax.text(b[0], b[3] + 4, f"{d.label} {found[d.label]}/{n}", color=color, fontsize=7, weight="bold",
+                        va="top", bbox={"facecolor": "black", "alpha": 0.6, "pad": 1, "lw": 0})
+            p = next(r for r in acc.summary_rows if r["iou_threshold"] == lab and r["metric"] == "precision")["mean"]
+            rcl = next(r for r in acc.summary_rows if r["iou_threshold"] == lab and r["metric"] == "recall")["mean"]
+            ax.set_title(f"{u.model} · {u.n_trials} trials · precision {p:.2f}, recall {rcl:.2f} at IoU ≥ {lab}",
+                         fontsize=10)
+        else:
+            for s in u.sets:
+                for d in s.detections:
+                    b = [float(v) * scale for v in d.box]
+                    ax.add_patch(Rectangle((b[0], b[1]), b[2] - b[0], b[3] - b[1], fill=False, lw=0.7,
+                                           edgecolor=np.array(trial_color(s.trial)) / 255))
+            ax.set_title(f"{u.model} · {u.n_trials} trials (box colour = trial)", fontsize=10)
+    if any_acc:
+        handles = [Patch(edgecolor=c, facecolor="none", label=OUTCOME_LABELS[k]) for k, c in OUTCOME_COLORS.items()]
+        handles += [Patch(edgecolor=REF_FOUND_COLOR, facecolor="none", ls="--", label="reference tree, found in every trial"),
+                    Patch(edgecolor=MISSED_COLOR, facecolor="none", ls="--", label="reference tree, missed in some trials")]
+        fig.legend(handles=handles, loc="lower center", ncol=3, fontsize=8, frameon=False, bbox_to_anchor=(0.5, 0.03))
+    fig.suptitle(f"L. Every trial's boxes for each model on {image_id}" + (" vs the human reference" if any_acc else ""),
+                 fontsize=12)
+    return finish(fig, path, COMPARISON_NOTE)

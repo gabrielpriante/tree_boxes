@@ -753,6 +753,12 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
                                     "COMPLETE" if status == ec.REFERENCE_COMPLETE else f"not approved ({status})")
         for u, acc in accuracy_results:
             figure_paths[u.key] = figure_paths.get(u.key, []) + ep.accuracy_figures(u, acc, output_dir)
+        acc_by_key = {u.key: acc for u, acc in accuracy_results}
+        for image_id in sorted({r["image_id"] for r in comparison_rows}):
+            group = [u for u in units if u.image_id == image_id]
+            figure_paths[f"comparison/{image_id}"] = ep.comparison_figures(
+                image_id, group, results, stats, acc_by_key, [r for r in cross_rows if r["image_id"] == image_id],
+                output_dir)
 
     config = {
         "algorithm_version": ec.ALGORITHM_VERSION,
