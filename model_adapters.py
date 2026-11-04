@@ -5,7 +5,8 @@ An adapter turns (preprocessed image bytes, prompt) into one raw model response.
 The batch runner owns everything else: trial bookkeeping, budget, validation,
 rendering, and CSV output, so every model shares the same result format.
 
-Implemented:  M08 Claude Opus 5.5 (ClaudeAdapter), plus MockAdapter for offline tests.
+Implemented:  M08 Claude Opus 5.5 (ClaudeAdapter), M09 OpenAI GPT-6.1 Sol (OpenAIAdapter),
+              plus MockAdapter for offline tests.
 Planned:      see PLANNED_ADAPTERS.
 """
 
@@ -15,10 +16,22 @@ import json
 import math
 import platform
 import random
+import re
 import time
 from dataclasses import dataclass, field
 
 import box_generation as bg
+
+_SECRET_PATTERNS = [re.compile(r"sk-[A-Za-z0-9_\-*.]{4,}"), re.compile(r"(?i)bearer\s+\S+")]
+
+
+def redact_secrets(text):
+    """Remove anything that looks like an API key (including masked fragments some APIs echo back)."""
+    if not isinstance(text, str):
+        return text
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    return text
 
 # First-party Anthropic API list prices in USD per million tokens for claude-opus-5-5.
 # Thinking tokens are billed as output tokens and are included in usage.output_tokens.
@@ -39,7 +52,6 @@ REQUEST_OVERHEAD_TOKENS = 2000
 PLANNED_ADAPTERS = {
     "M01": "DeepForest (existing implementation; results are frozen, adapter not implemented)",
     "M02": "DeepForest (existing implementation; results are frozen, adapter not implemented)",
-    "M09": "OpenAI / ChatGPT (adapter not implemented)",
     "M10": "Gemini (adapter not implemented)",
     "COPILOT": "Microsoft Copilot (programmatic endpoint not yet identified)",
 }
@@ -60,6 +72,8 @@ class AdapterResult:
     possibly_billed: bool = False   # error happened after generation may have started
     error: str | None = None
     retries: list = field(default_factory=list)
+    stop_detail: str | None = None  # provider-specific reason behind stop_reason, e.g. "content_filter"
+    provider_response: dict = field(default_factory=dict)  # effective settings echoed by the provider
 
 
 def _sha256_text(s: str) -> str:
@@ -85,6 +99,25 @@ class ModelAdapter:
 
     def max_output_tokens(self) -> int:
         raise NotImplementedError
+
+    def image_tokens(self, width: int, height: int) -> int:
+        """Input tokens this provider charges for an uploaded image of this size (estimate)."""
+        return bg.count_image_tokens(width, height)
+
+    def image_meta(self, upload: dict) -> dict:
+        """Provider-specific facts about the upload, stored in every record's `image` block."""
+        return {
+            # Equal to the upload size: the upload is pre-resized to the API's documented target,
+            # and the request sets oversized_image=error, so the API cannot downsize it further.
+            "api_effective_width": upload["width"],
+            "api_effective_height": upload["height"],
+            "upload_visual_tokens": upload["visual_tokens"],
+        }
+
+    def describe(self, cfg: dict) -> str:
+        inf = cfg["inference"]
+        return (f"{cfg['adapter']}: {cfg['model']}, effort={inf['effort']}, thinking={inf['thinking']['type']}, "
+                f"max_tokens={inf['max_tokens']}, preprocessing v{cfg['preprocessing']['version']}")
 
     def estimate_input_tokens(self, prompt: str, image_tokens: int | None = None) -> int:
         """Conservative upper bound used before any request for this image has completed."""
@@ -235,6 +268,312 @@ class ClaudeAdapter(ModelAdapter):
             self._sleep(wait)
 
 
+# ---------------------------------------------------------------- M09: OpenAI GPT-6.1 Sol
+
+OPENAI_MODEL = "gpt-6.1-sol"
+OPENAI_REASONING_EFFORT = "high"
+OPENAI_MAX_OUTPUT_TOKENS = bg.MAX_TOKENS          # 32,000, the M08 limit (model maximum: 128,000)
+OPENAI_IMAGE_DETAIL = "original"                   # keep the 2212 x 1659 upload as is (see BENCHMARK.md)
+OPENAI_IMAGE_CONTEXT_COMPRESSION = "disabled"      # request-level `image.context_compression`
+OPENAI_SCHEMA_NAME = "tree_detections"             # name required by the API; transport only
+OPENAI_BASE_URL = "https://api.openai.com/v1"
+OPENAI_PATCH_PX = 32                               # GPT-5.6 / GPT-6 family patch size (images-vision guide)
+OPENAI_IMAGE_TOKEN_MULTIPLIER = 1.2                # GPT-5.6 / GPT-6 family; gpt-6.1-sol not yet listed
+OPENAI_MAX_PATCHES = 30_000                        # requests above this are rejected, not resized
+
+# OpenAI API Standard-tier list prices for gpt-6.1-sol, USD per million tokens. Reasoning tokens are
+# reported inside usage.output_tokens and billed as output. Prompts over 272K input tokens are billed
+# at 2x input/cache rates and 1.5x output for the whole request (not reachable here).
+GPT_6_1_SOL_PRICING = {
+    "currency": "USD",
+    "input_per_mtok": 2.00,
+    "cached_input_per_mtok": 0.10,
+    "cache_write_per_mtok": 2.50,
+    "output_per_mtok": 10.00,
+    "long_context_threshold_input_tokens": 272_000,
+    "long_context_input_multiplier": 2.0,
+    "long_context_output_multiplier": 1.5,
+    "service_tier": "default (Standard)",
+    "source": "developers.openai.com/api/docs/models/gpt-6.1-sol (verified 2026-11-04)",
+}
+
+
+def openai_image_tokens(width: int, height: int) -> int:
+    """Documented patch formula for the GPT-5.6 / GPT-6 family at detail=original: 32 px patches x 1.2.
+    Not yet documented for gpt-6.1-sol, so this is an estimate until the first trial reports usage."""
+    patches = math.ceil(width / OPENAI_PATCH_PX) * math.ceil(height / OPENAI_PATCH_PX)
+    return math.ceil(patches * OPENAI_IMAGE_TOKEN_MULTIPLIER)
+
+
+def openai_request(image_b64: str, prompt: str) -> dict:
+    """Responses API parameters for one independent M09 trial.
+
+    Scientific content is identical to M08: the same preprocessed JPEG (sent first, as in M08), the same
+    prompt text and the same JSON schema object. Everything else is transport or a protective setting:
+    no instructions/system prompt, no tools, no conversation or previous_response_id, nothing stored,
+    no prompt caching (explicit mode without breakpoints), no image context compression.
+    """
+    return {
+        "model": OPENAI_MODEL,
+        "input": [{
+            "role": "user",
+            "content": [
+                {"type": "input_image", "image_url": f"data:image/jpeg;base64,{image_b64}",
+                 "detail": OPENAI_IMAGE_DETAIL},
+                {"type": "input_text", "text": prompt},
+            ],
+        }],
+        "reasoning": {"effort": OPENAI_REASONING_EFFORT},
+        "max_output_tokens": OPENAI_MAX_OUTPUT_TOKENS,
+        "text": {"format": {"type": "json_schema", "name": OPENAI_SCHEMA_NAME,
+                            "schema": bg.OUTPUT_SCHEMA, "strict": True}},
+        "store": False,
+        "truncation": "disabled",
+        "service_tier": "default",
+        "prompt_cache_options": {"mode": "explicit"},
+        # Not yet a typed argument in the Python SDK; sent as documented in the REST reference.
+        "extra_body": {"image": {"context_compression": OPENAI_IMAGE_CONTEXT_COMPRESSION}},
+    }
+
+
+def openai_config(model_code: str, adapter_name: str) -> dict:
+    preprocessing = claude_config(model_code, adapter_name)["preprocessing"]
+    preprocessing = {**preprocessing,
+                     "provenance": "identical v2 pipeline and bytes as M08 (target size from Anthropic's limits)",
+                     "server_resize_guard": f"input_image.detail = {OPENAI_IMAGE_DETAIL}; "
+                                            f"image.context_compression = {OPENAI_IMAGE_CONTEXT_COMPRESSION}"}
+    return {
+        "adapter": adapter_name,
+        "model_code": model_code,
+        "model": OPENAI_MODEL,
+        "inference": {
+            "api": "OpenAI Responses API (POST /v1/responses)",
+            "effort": OPENAI_REASONING_EFFORT,
+            "reasoning": {"effort": OPENAI_REASONING_EFFORT, "summary": None},
+            "max_output_tokens": OPENAI_MAX_OUTPUT_TOKENS,
+            "streaming": True,
+            "structured_output": f"text.format json_schema strict=true (name {OPENAI_SCHEMA_NAME!r})",
+            "image_detail": OPENAI_IMAGE_DETAIL,
+            "image_context_compression": OPENAI_IMAGE_CONTEXT_COMPRESSION,
+            "store": False,
+            "prompt_cache": "explicit mode, no breakpoints (no cache reads or writes)",
+            "service_tier": "default",
+            "truncation": "disabled",
+            "tools": "none",
+            "instructions": "none",
+            "sampling": "provider defaults (temperature/top_p unsupported with reasoning)",
+        },
+        "prompt_template_sha256": _sha256_text(bg.PROMPT_TEMPLATE),
+        "output_schema_sha256": _sha256_text(json.dumps(bg.OUTPUT_SCHEMA, sort_keys=True)),
+        "coordinates": "normalized 0-1000 [x_min, y_min, x_max, y_max], origin top-left",
+        "preprocessing": preprocessing,
+    }
+
+
+class _OpenAIBehaviour:
+    """Pieces shared by the real M09 adapter and its mock (config, pricing, image accounting)."""
+
+    model_code = "M09"
+    pricing = GPT_6_1_SOL_PRICING
+
+    def max_output_tokens(self) -> int:
+        return OPENAI_MAX_OUTPUT_TOKENS
+
+    def image_tokens(self, width: int, height: int) -> int:
+        return openai_image_tokens(width, height)
+
+    def image_meta(self, upload: dict) -> dict:
+        w, h = upload["width"], upload["height"]
+        patches = math.ceil(w / OPENAI_PATCH_PX) * math.ceil(h / OPENAI_PATCH_PX)
+        return {
+            "api_detail": OPENAI_IMAGE_DETAIL,
+            "api_expected_width": w,
+            "api_expected_height": h,
+            "api_effective_size_verified": False,  # gpt-6.1-sol is not in the image-sizing table yet
+            "api_patches_32px": patches,
+            "api_estimated_image_tokens": openai_image_tokens(w, h),
+        }
+
+    def describe(self, cfg: dict) -> str:
+        inf = cfg["inference"]
+        return (f"{cfg['adapter']}: {cfg['model']}, reasoning.effort={inf['effort']}, "
+                f"max_output_tokens={inf['max_output_tokens']}, detail={inf['image_detail']}, "
+                f"store={inf['store']}, preprocessing v{cfg['preprocessing']['version']}")
+
+    def cost_usd(self, usage: dict) -> float:
+        p = self.pricing
+        inp = usage.get("input_tokens", 0) or 0
+        cached = usage.get("cached_input_tokens", 0) or 0
+        written = usage.get("cache_write_tokens", 0) or 0
+        out = usage.get("output_tokens", 0) or 0
+        in_mult = out_mult = 1.0
+        if inp > p["long_context_threshold_input_tokens"]:
+            in_mult, out_mult = p["long_context_input_multiplier"], p["long_context_output_multiplier"]
+        uncached = max(inp - cached - written, 0)
+        return (in_mult * (uncached * p["input_per_mtok"] + cached * p["cached_input_per_mtok"]
+                           + written * p["cache_write_per_mtok"])
+                + out_mult * out * p["output_per_mtok"]) / 1_000_000
+
+
+def _openai_usage(usage) -> dict:
+    if usage is None:
+        return {}
+    u = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
+    inp = u.get("input_tokens_details") or {}
+    out = u.get("output_tokens_details") or {}
+    return {
+        "input_tokens": u.get("input_tokens") or 0,
+        "output_tokens": u.get("output_tokens") or 0,
+        "reasoning_tokens": out.get("reasoning_tokens") or 0,
+        "cached_input_tokens": inp.get("cached_tokens") or 0,
+        "cache_write_tokens": inp.get("cache_write_tokens") or 0,
+        "total_tokens": u.get("total_tokens") or 0,
+    }
+
+
+class OpenAIAdapter(_OpenAIBehaviour, ModelAdapter):
+    """M09: GPT-6.1 Sol through the OpenAI Responses API, one independent request per call."""
+
+    adapter_name = "openai-responses"
+    billing_account = "openai_api"
+
+    MAX_RETRIES = 4
+    BACKOFF_BASE_S = 5.0
+    BACKOFF_MAX_S = 120.0
+    FATAL_STATUS = {400, 401, 403, 404, 413, 422}
+    FATAL_ERROR_CODES = {"insufficient_quota", "billing_hard_limit_reached", "invalid_api_key"}
+
+    def __init__(self, client=None, sleep=time.sleep):
+        self._client = client
+        self._sleep = sleep
+        self._halt = None   # set when a response shows the experiment conditions were not honoured
+
+    def config(self) -> dict:
+        return openai_config(self.model_code, self.adapter_name)
+
+    def software(self) -> dict:
+        import openai
+        return {**super().software(), "openai": openai.__version__}
+
+    def prepare(self) -> None:
+        if self._client is not None:
+            return
+        import os
+        import openai
+
+        bg.load_env()
+        if not os.environ.get("OPENAI_API_KEY"):
+            raise FatalAdapterError("OPENAI_API_KEY is not set (expected in .env).")
+        base_url = os.environ.get("OPENAI_BASE_URL")
+        if base_url and base_url.rstrip("/") != OPENAI_BASE_URL:
+            raise FatalAdapterError("OPENAI_BASE_URL points away from api.openai.com; unset it for this benchmark.")
+        # SDK retries off: retries are handled here so each one is logged. Long timeout for high effort.
+        self._client = openai.OpenAI(max_retries=0, timeout=1800.0, base_url=OPENAI_BASE_URL)
+
+    def _backoff(self, n: int, exc) -> float:
+        response = getattr(exc, "response", None)
+        retry_after = response.headers.get("retry-after") if response is not None else None
+        if retry_after:
+            try:
+                return min(float(retry_after), 300.0)
+            except ValueError:
+                pass
+        return min(self.BACKOFF_BASE_S * 2 ** n, self.BACKOFF_MAX_S) + random.uniform(0, 1)
+
+    @staticmethod
+    def _error_code(exc) -> str | None:
+        body = getattr(exc, "body", None)
+        if isinstance(body, dict):
+            err = body.get("error", body)
+            if isinstance(err, dict):
+                return err.get("code") or err.get("type")
+        return getattr(exc, "code", None)
+
+    def _result(self, response, retries) -> AdapterResult:
+        raw = json.loads(response.to_json())
+        usage = _openai_usage(response.usage)
+        served = response.model or ""
+        compression = (raw.get("image") or {}).get("context_compression")
+        provider = {"response_id": response.id, "model": served, "status": response.status,
+                    "service_tier": raw.get("service_tier"), "store": raw.get("store"),
+                    "reasoning": raw.get("reasoning"), "image_context_compression": compression,
+                    "incomplete_details": raw.get("incomplete_details")}
+        common = dict(raw=raw, usage=usage, request_id=getattr(response, "_request_id", None) or response.id,
+                      retries=retries, provider_response=provider)
+
+        problems = []
+        if not served.startswith(OPENAI_MODEL):
+            problems.append(f"served model {served!r} is not {OPENAI_MODEL}")
+        if compression is not None and compression != OPENAI_IMAGE_CONTEXT_COMPRESSION:
+            problems.append(f"image context compression was {compression!r}, requested {OPENAI_IMAGE_CONTEXT_COMPRESSION!r}")
+        if problems:
+            self._halt = "; ".join(problems)
+            return AdapterResult(status="error", error=f"experiment condition not honoured: {self._halt}",
+                                 possibly_billed=True, **common)
+
+        if response.status == "completed":
+            refusals = [c.refusal for item in response.output if getattr(item, "type", "") == "message"
+                        for c in item.content if getattr(c, "type", "") == "refusal"]
+            if refusals:
+                return AdapterResult(status="ok", text="", stop_reason="refusal",
+                                     stop_detail=redact_secrets(" ".join(refusals))[:500], **common)
+            return AdapterResult(status="ok", text=response.output_text, stop_reason="completed", **common)
+        if response.status == "incomplete":
+            reason = getattr(response.incomplete_details, "reason", None)
+            if reason == "max_output_tokens":
+                return AdapterResult(status="ok", text=response.output_text, stop_reason="max_tokens",
+                                     stop_detail=reason, **common)
+            if reason == "content_filter":
+                return AdapterResult(status="ok", text="", stop_reason="refusal", stop_detail=reason, **common)
+            return AdapterResult(status="error", error=f"response incomplete: {reason}", possibly_billed=True,
+                                 stop_detail=reason, **common)
+        err = raw.get("error") or {}
+        return AdapterResult(status="error", possibly_billed=True, stop_detail=response.status,
+                             error=redact_secrets(f"response {response.status}: {err.get('code')} {err.get('message')}"),
+                             **common)
+
+    def run(self, jpeg_bytes: bytes, prompt: str, context: dict) -> AdapterResult:
+        import openai
+
+        if self._halt:
+            raise FatalAdapterError(f"stopped: {self._halt}")
+        self.prepare()
+        params = openai_request(base64.standard_b64encode(jpeg_bytes).decode("ascii"), prompt)
+        retries = []
+        for n in range(self.MAX_RETRIES + 1):
+            started = False
+            try:
+                with self._client.responses.stream(**params) as stream:
+                    started = True
+                    response = stream.get_final_response()
+            except openai.APIStatusError as e:
+                code = self._error_code(e)
+                error = redact_secrets(f"{type(e).__name__} ({e.status_code}, {code}): {e.message}")
+                if e.status_code in self.FATAL_STATUS or code in self.FATAL_ERROR_CODES:
+                    raise FatalAdapterError(error) from None
+                retryable = e.status_code in (408, 409, 429) or e.status_code >= 500
+                exc = e
+            except openai.APIConnectionError as e:
+                retryable = True
+                error = redact_secrets(f"{type(e).__name__}: {e}")
+                exc = e
+            except openai.OpenAIError as e:
+                retryable = False
+                error = redact_secrets(f"{type(e).__name__}: {e}")
+                exc = e
+            else:
+                return self._result(response, retries)
+
+            if started:
+                # The stream opened, so tokens may have been generated and billed. Not retried here.
+                return AdapterResult(status="error", error=error, possibly_billed=True, retries=retries)
+            if not retryable or n == self.MAX_RETRIES:
+                return AdapterResult(status="error", error=error, retries=retries)
+            wait = self._backoff(n, exc)
+            retries.append({"retry": n + 1, "error": error, "wait_s": round(wait, 1)})
+            self._sleep(wait)
+
+
 class MockAdapter(ModelAdapter):
     """Offline stand-in with Claude's config and pricing. Never touches the network.
 
@@ -306,9 +645,20 @@ class MockAdapter(ModelAdapter):
                              usage=usage, request_id=raw["id"])
 
 
+class MockOpenAIAdapter(_OpenAIBehaviour, MockAdapter):
+    """Offline stand-in with the M09 config, pricing and image accounting. Never touches the network."""
+
+    adapter_name = "mock"
+
+    def config(self) -> dict:
+        return openai_config(self.model_code, self.adapter_name)
+
+
 def get_adapter(model_code: str, mock: bool = False, **kwargs) -> ModelAdapter:
     if model_code == "M08":
         return MockAdapter(**kwargs) if mock else ClaudeAdapter(**kwargs)
+    if model_code == "M09":
+        return MockOpenAIAdapter(**kwargs) if mock else OpenAIAdapter(**kwargs)
     if model_code in PLANNED_ADAPTERS:
         raise NotImplementedError(f"{model_code}: {PLANNED_ADAPTERS[model_code]}")
     raise ValueError(f"Unknown model code {model_code!r}")
