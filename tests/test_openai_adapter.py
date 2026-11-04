@@ -239,7 +239,7 @@ class TestPromptAndPreprocessingEquivalence(unittest.TestCase):
                 self.assertEqual((p.parent / "prompt.txt").read_text(encoding="utf-8"), img["prompt"], p)
             self.assertEqual((img["meta"]["upload_width"], img["meta"]["upload_height"]), (2212, 1659))
             self.assertEqual(img["meta"]["api_detail"], "original")
-            self.assertFalse(img["meta"]["api_effective_size_verified"])
+            self.assertFalse(img["meta"]["api_internal_size_observable"])
 
     def test_image_token_estimate(self):
         self.assertEqual(ma.openai_image_tokens(2212, 1659), 4368)   # 70 x 52 patches x 1.2
@@ -579,6 +579,97 @@ class TestRunnerWithOpenAI(RunnerTest):
         cfg = json.loads(next(self.out.rglob("model_config.json")).read_text())
         self.assertEqual((cfg["model_code"], cfg["model"], cfg["adapter"]), ("M09", "gpt-6.1-sol", "mock"))
         self.assertTrue((self.out / "mock_spend_ledger.jsonl").exists())
+
+
+class TestPilotProtocol(RunnerTest):
+    """The planned pilot: one paid trial first, then resume the same experiment to 10 trials."""
+
+    def files(self, trial):
+        d = self.out / "EXP_M09" / PINNED_M09_CONFIG_ID / "IMG_A" / f"trial_{trial:02d}"
+        return {p.relative_to(d).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in sorted(d.rglob("*")) if p.is_file()}
+
+    def test_one_trial_then_resume_to_ten(self):
+        a, client = adapter()
+        report = self.run_m09(a, runs=1)
+        self.assertEqual((report["trials_run"], report["incomplete"]), (1, {}))
+        first = self.files(1)
+        with self.assertRaises(SystemExit):                 # repeating without --resume is refused
+            self.run_m09(adapter()[0], runs=10)
+        b, client2 = adapter()
+        report = self.run_m09(b, runs=10, resume=True)
+        self.assertEqual((report["trials_run"], report["incomplete"]), (9, {}))
+        self.assertEqual(len(client2.calls), 9)
+        self.assertEqual(self.files(1), first)               # trial 1 untouched
+        recs = self.records()
+        self.assertEqual(sorted(r["trial"] for r in recs), list(range(1, 11)))
+        self.assertTrue(all(r["attempt"] == 1 for r in recs))
+        self.assertEqual(len({r["attempt_uid"] for r in recs}), 10)
+        self.assertEqual(br.SpendLedger(self.ledger).summary()["attempts"], 10)
+        long = list(csv.DictReader((self.out / "EXP_M09" / "counts_long.csv").open()))
+        self.assertEqual(len(long), 10)
+        again, client3 = adapter()
+        self.assertEqual(self.run_m09(again, runs=10, resume=True)["trials_run"], 0)
+        self.assertEqual(client3.calls, [])
+
+    def test_request_record_holds_hashes_not_data(self):
+        a, _ = adapter()
+        self.run_m09(a, runs=1)
+        req = json.loads(next((self.out / "EXP_M09").rglob("request.json")).read_text())["api_request"]
+        img = req["input"][0]["content"][0]
+        rec = self.records()[0]
+        self.assertIn(rec["image"]["upload_sha256"], img["image_url"])
+        self.assertNotIn(";base64,/9j", img["image_url"])
+        self.assertIn(rec["prompt_sha256"], req["input"][0]["content"][1]["text"])
+        self.assertEqual({k: req[k] for k in ("model", "reasoning", "max_output_tokens", "store", "image", "stream")},
+                         {"model": "gpt-6.1-sol", "reasoning": {"effort": "high"}, "max_output_tokens": 32000,
+                          "store": False, "image": {"context_compression": "disabled"}, "stream": True})
+        self.assertEqual(img["detail"], "original")
+        self.assertNotIn("summary", req["reasoning"])
+
+    def test_pause_after_one_stops_on_first_incomplete_response(self):
+        a, client = adapter([make_response(text='{"si', status="incomplete", reason="max_output_tokens")])
+        report = self.run_m09(a, runs=10, pause_after=1)
+        self.assertTrue(report["stopped"].startswith("paused"))
+        self.assertEqual(len(client.calls), 1)
+
+    def test_unsupported_setting_stops_without_changing_it(self):
+        a, client = adapter([status_error(openai.BadRequestError, 400, "unsupported_parameter",
+                                          "image.context_compression is not supported for this model")])
+        report = self.run_m09(a, runs=10)
+        self.assertTrue(report["stopped"].startswith("error"))
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(self.records()[0]["status"], "error")
+        self.assertEqual(self.records()[0]["estimated_cost_usd"], 0.0)
+
+
+class TestWireFormat(unittest.TestCase):
+    """Capture the HTTP request the SDK actually builds (mock transport; nothing leaves the machine)."""
+
+    def test_serialized_body_matches_responses_api_reference(self):
+        import httpx2
+        captured = {}
+
+        def handler(request):
+            captured["url"], captured["body"] = str(request.url), json.loads(request.content)
+            return httpx2.Response(400, json={"error": {"code": "captured", "message": "offline capture"}})
+
+        client = openai.OpenAI(api_key=FAKE_KEY, base_url=ma.OPENAI_BASE_URL, max_retries=0,
+                               http_client=httpx2.Client(transport=httpx2.MockTransport(handler)))
+        a = ma.OpenAIAdapter(client=client)
+        with self.assertRaises(ma.FatalAdapterError):       # a rejected request stops the run
+            run_once(a, prompt="PROMPT", jpeg=b"\xff\xd8bytes")
+        b = captured["body"]
+        self.assertEqual(captured["url"], "https://api.openai.com/v1/responses")
+        self.assertEqual(sorted(b), ["image", "input", "max_output_tokens", "model", "prompt_cache_options",
+                                     "reasoning", "service_tier", "store", "stream", "text", "truncation"])
+        self.assertEqual(b["image"], {"context_compression": "disabled"})
+        self.assertEqual(b["reasoning"], {"effort": "high"})
+        self.assertEqual(b["input"][0]["content"][0]["detail"], "original")
+        self.assertEqual(b["text"]["format"]["schema"], bg.OUTPUT_SCHEMA)
+        self.assertNotIn("SECRET", json.dumps(b))
+        self.assertEqual(b, {**ma.OpenAIAdapter().request_record(b"\xff\xd8bytes", "PROMPT"),
+                             "input": b["input"]})
 
 
 class TestEvaluationCompatibility(RunnerTest):
