@@ -45,7 +45,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import box_generation as bg
-from model_adapters import FatalAdapterError, get_adapter
+from model_adapters import FatalAdapterError, ModelAdapter, get_adapter, redact_secrets
 
 ROOT = Path(__file__).resolve().parent
 PRODUCTION_OUTPUT_DIR = ROOT / "benchmark_results"
@@ -394,13 +394,14 @@ def observed_input_tokens(run_dir: Path, image_id: str) -> int | None:
     return max(seen) if seen else None
 
 
-def expected_image_tokens(row: dict) -> int | None:
-    """Visual tokens of the upload, from the manifest dimensions (no image decoding)."""
+def expected_image_tokens(row: dict, adapter=None) -> int | None:
+    """Image input tokens of the upload, from the manifest dimensions (no image decoding)."""
     try:
         w, h = int(row["width"]), int(row["height"])
     except (KeyError, ValueError):
         return None
-    return bg.count_image_tokens(*bg.api_resized_size(w, h))
+    size = bg.api_resized_size(w, h)
+    return adapter.image_tokens(*size) if adapter is not None else bg.count_image_tokens(*size)
 
 
 def worst_case_usd(adapter, prompt: str, observed: int | None, image_tokens: int | None = None) -> float:
@@ -622,6 +623,7 @@ def run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image, run_dir,
 
     def finish(status):
         record["status"] = status
+        record["error"] = redact_secrets(record["error"])
         record["finished_utc"] = now_utc()
         record["finished_unix_ns"] = time.time_ns()
         record["duration_s"] = round(time.monotonic() - t0, 2)
@@ -641,7 +643,7 @@ def run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image, run_dir,
         finish("interrupted")
         raise
     except FatalAdapterError as e:
-        record["error"] = str(e)
+        record["error"] = redact_secrets(str(e))
         finish("error")
         raise
 
@@ -649,10 +651,21 @@ def run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image, run_dir,
     record["request_id"] = result.request_id
     record["usage"] = result.usage
     record["stop_reason"] = result.stop_reason
+    if result.stop_detail:
+        record["stop_detail"] = result.stop_detail
+    if result.provider_response:
+        record["provider_response"] = result.provider_response
 
     if result.status != "ok":
         record["error"] = result.error
-        if result.possibly_billed:
+        if result.raw is not None:
+            write_new_json(adir / "response_raw.json", result.raw)
+            record["files"]["response_raw"] = "response_raw.json"
+        if result.usage:
+            # The provider reported usage for the failed response: charge that, not a bound.
+            record.update(possibly_billed=True, estimated_cost_usd=adapter.cost_usd(result.usage),
+                          cost_basis="actual_usage (error response)")
+        elif result.possibly_billed:
             record.update(possibly_billed=True, estimated_cost_usd=worst_case,
                           cost_basis="worst_case_bound (failed after generation started)")
         return finish("error")
@@ -700,7 +713,7 @@ def run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image, run_dir,
 
 # ---------------------------------------------------------------- image preparation
 
-def prepare_image(row: dict) -> dict:
+def prepare_image(row: dict, adapter=None) -> dict:
     raw_bytes = row["_abs_path"].read_bytes()
     file_sha = sha256_bytes(raw_bytes)
     if row.get("sha256") and row["sha256"] != file_sha:
@@ -714,11 +727,8 @@ def prepare_image(row: dict) -> dict:
         "original_height": original.height,
         "upload_width": upload["width"],
         "upload_height": upload["height"],
-        # Equal to the upload size: the upload is pre-resized to the API's documented target,
-        # and the request sets oversized_image=error, so the API cannot downsize it further.
-        "api_effective_width": upload["width"],
-        "api_effective_height": upload["height"],
-        "upload_visual_tokens": upload["visual_tokens"],
+        # Provider-specific facts (for M08: the API's effective size and visual tokens).
+        **(adapter.image_meta(upload) if adapter is not None else ModelAdapter.image_meta(None, upload)),
         "upload_jpeg_quality": upload["jpeg_quality"],
         "upload_bytes": upload["bytes"],
         "upload_sha256": sha256_bytes(jpeg),
@@ -874,6 +884,13 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
     report = {"experiment_id": experiment_id, "model_config_id": cfg_id, "run_dir": str(run_dir),
               "trials_run": 0, "stopped": None, "skipped_images": [], "ledger": str(ledger.path)}
 
+    if exp_dir.exists():
+        others = sorted(p.name for p in exp_dir.iterdir() if (p / "model_config.json").exists()
+                        and read_json(p / "model_config.json").get("model_code") != cfg["model_code"])
+        if others:
+            raise SystemExit(f"{exp_dir} already holds results from another model ({', '.join(others)}). "
+                             "Use a separate --experiment-id for each model.")
+
     blockers = {r["image_id"]: ([] if allow_unknown_metadata else prompt_metadata_blockers(r)) for r in rows}
     report["skipped_images"] = [(i, "; ".join(b)) for i, b in blockers.items() if b]
 
@@ -885,9 +902,7 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
                          "Use --resume to continue without repeating completed trials.")
 
     log(f"Experiment:   {experiment_id}")
-    log(f"Model config: {cfg_id}  ({cfg['adapter']}: {cfg['model']}, effort={cfg['inference']['effort']}, "
-        f"thinking={cfg['inference']['thinking']['type']}, max_tokens={cfg['inference']['max_tokens']}, "
-        f"preprocessing v{cfg['preprocessing']['version']})")
+    log(f"Model config: {cfg_id}  ({adapter.describe(cfg)})")
     log(f"Results dir:  {run_dir}")
     log(f"Ledger:       {ledger.path}")
     log("Order:        " + ("round-robin across images (A1, B1, A2, B2, ...)" if round_robin
@@ -899,8 +914,8 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
         image_id = row["image_id"]
         prompt = bg.build_prompt(row["site"], row["week"], row["condition"])
         observed = observed_input_tokens(run_dir, image_id)
-        input_est = observed or adapter.estimate_input_tokens(prompt, expected_image_tokens(row))
-        worst = worst_case_usd(adapter, prompt, observed, expected_image_tokens(row))
+        input_est = observed or adapter.estimate_input_tokens(prompt, expected_image_tokens(row, adapter))
+        worst = worst_case_usd(adapter, prompt, observed, expected_image_tokens(row, adapter))
         todo = [t for t, (st, _) in states[image_id].items() if st != "done"]
         ready = not blockers[image_id]
         plan.append((row, todo, ready))
@@ -1001,15 +1016,17 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
         for row, trial in execution_order(plan, round_robin):
             image_id = row["image_id"]
             if image_id not in images:
-                image = images[image_id] = prepare_image(row)
+                image = images[image_id] = prepare_image(row, adapter)
                 check_consistency(image, image_attempts(run_dir, image_id), image_id)
+                image["image_tokens"] = adapter.image_tokens(image["meta"]["upload_width"],
+                                                             image["meta"]["upload_height"])
                 log(f"\n{image_id}: upload {image['meta']['upload_width']}x{image['meta']['upload_height']} "
-                    f"({image['meta']['upload_visual_tokens']} visual tokens; "
+                    f"(~{image['image_tokens']} image tokens; "
                     f"from {image['meta']['original_width']}x{image['meta']['original_height']})")
             image = images[image_id]
             for _ in range(max_attempts):
                 worst = worst_case_usd(adapter, image["prompt"], observed_input_tokens(run_dir, image_id),
-                                       image["meta"]["upload_visual_tokens"])
+                                       image["image_tokens"])
                 if spent + worst > max_usd:
                     raise BudgetStop(f"next request worst-case ${worst:.4f} would exceed the remaining "
                                      f"budget ${max_usd - spent:.4f} (limit ${max_usd:.2f})")
@@ -1095,7 +1112,8 @@ def main(argv=None):
     ap.add_argument("--output-dir", type=Path,
                     help=f"Default {PRODUCTION_OUTPUT_DIR.name}/ (or {MOCK_OUTPUT_DIR.name}/ with --mock)")
     ap.add_argument("--experiment-id", default="tree_count_consistency_v1")
-    ap.add_argument("--model", default="M08", help="Model code (only M08 is implemented)")
+    ap.add_argument("--model", default="M08", choices=("M08", "M09"),
+                    help="M08 = Claude Opus 5.5 (Anthropic); M09 = GPT-6.1 Sol (OpenAI)")
     ap.add_argument("--max-attempts", type=int, default=2,
                     help="Attempts per trial per session after API errors (default 2)")
     ap.add_argument("--pause-after", type=int, default=DEFAULT_PAUSE_AFTER,
