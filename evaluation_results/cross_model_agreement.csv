@@ -1,0 +1,4 @@
+image_id,model_config_a,model_a,experiment_a,model_config_b,model_b,experiment_b,iou_threshold,trial_pairs,agreement_mean,agreement_sd,agreement_min,agreement_max,matched_iou_mean
+LA_PT-R1_27m,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,0.50,100,0.82779,0.158276,0.333333,1,0.811259
+LA_PT-R1_27m,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,0.75,100,0.552476,0.191497,0,1,0.890832
+LA_PT-R1_27m,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,1.00,100,0,0,0,0,

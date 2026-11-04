@@ -1,0 +1,3 @@
+image_id,site,experiment_id,model_config_id,model,successful_trials,mean_count,sd_count,cv_count,within_model_agreement_iou050,within_model_agreement_iou075,within_model_agreement_iou100,precision_iou050,recall_iou050,f1_iou050,precision_iou075,recall_iou075,f1_iou075,precision_iou100,recall_iou100,f1_iou100,human_reference
+LA_PT-R1_27m,PT-R1,lowalt_pilot_ptr1_27m_m09_v1,M09_high_90be168b98,gpt-6.1-sol,10,5.7,0.674949,0.118412,0.83807,0.815511,0,0.85,0.436364,0.574657,0.638333,0.327273,0.431176,0,0,0,COMPLETE
+LA_PT-R1_27m,PT-R1,lowalt_pilot_ptr1_27m_v1,M08_high_a28fe01ac5,claude-opus-5-5,10,6.1,0.316228,0.051841,0.918519,0.88547,0.262963,0.785714,0.436364,0.560784,0.147619,0.081818,0.105229,0,0,0,COMPLETE
