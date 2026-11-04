@@ -1,0 +1,6 @@
+{
+  "experiment_id": "lowalt_pilot_ptr1_27m_m09_v1",
+  "created_utc": "2026-11-04T19:27:50+00:00",
+  "trial_convention": "trials numbered 1..N per image and model; each trial is one independent request",
+  "record_schema_version": 2
+}
