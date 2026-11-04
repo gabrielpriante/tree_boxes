@@ -1,0 +1,7 @@
+experiment_id,model_config_id,model,image_id,trial,tree_id,x_min,y_min,x_max,y_max
+lowalt_pilot_ptr1_27m_m09_v1,M09_high_90be168b98,gpt-6.1-sol,LA_PT-R1_27m,1,T001,421,127,500,249
+lowalt_pilot_ptr1_27m_m09_v1,M09_high_90be168b98,gpt-6.1-sol,LA_PT-R1_27m,1,T002,579,137,653,255
+lowalt_pilot_ptr1_27m_m09_v1,M09_high_90be168b98,gpt-6.1-sol,LA_PT-R1_27m,1,T003,715,46,941,321
+lowalt_pilot_ptr1_27m_m09_v1,M09_high_90be168b98,gpt-6.1-sol,LA_PT-R1_27m,1,T004,283,606,354,703
+lowalt_pilot_ptr1_27m_m09_v1,M09_high_90be168b98,gpt-6.1-sol,LA_PT-R1_27m,1,T005,432,646,519,763
+lowalt_pilot_ptr1_27m_m09_v1,M09_high_90be168b98,gpt-6.1-sol,LA_PT-R1_27m,1,T006,327,716,475,885
