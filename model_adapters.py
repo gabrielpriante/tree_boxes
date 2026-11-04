@@ -114,6 +114,10 @@ class ModelAdapter:
             "upload_visual_tokens": upload["visual_tokens"],
         }
 
+    def request_record(self, jpeg_bytes: bytes, prompt: str) -> dict | None:
+        """The exact request parameters sent, with the image and prompt replaced by their hashes."""
+        return None
+
     def describe(self, cfg: dict) -> str:
         inf = cfg["inference"]
         return (f"{cfg['adapter']}: {cfg['model']}, effort={inf['effort']}, thinking={inf['thinking']['type']}, "
@@ -387,12 +391,21 @@ class _OpenAIBehaviour:
         patches = math.ceil(w / OPENAI_PATCH_PX) * math.ceil(h / OPENAI_PATCH_PX)
         return {
             "api_detail": OPENAI_IMAGE_DETAIL,
-            "api_expected_width": w,
-            "api_expected_height": h,
-            "api_effective_size_verified": False,  # gpt-6.1-sol is not in the image-sizing table yet
-            "api_patches_32px": patches,
-            "api_estimated_image_tokens": openai_image_tokens(w, h),
+            # The API does not report the resolution it processes internally; token usage cannot prove it.
+            "api_internal_size_observable": False,
+            "api_patches_32px": patches,                                   # if 32 px patches apply (unverified)
+            "api_estimated_image_tokens": openai_image_tokens(w, h),       # budget estimate only
         }
+
+    def request_record(self, jpeg_bytes: bytes, prompt: str) -> dict:
+        req = openai_request("", prompt)
+        req.update(req.pop("extra_body"))   # the SDK merges extra_body into the top level of the JSON body
+        content = req["input"][0]["content"]
+        content[0]["image_url"] = (f"data:image/jpeg;base64,<omitted: {len(jpeg_bytes)} bytes, "
+                                   f"sha256 {hashlib.sha256(jpeg_bytes).hexdigest()}>")
+        content[1]["text"] = f"<prompt: {len(prompt)} characters, sha256 {_sha256_text(prompt)}>"
+        req["stream"] = True   # added by client.responses.stream()
+        return req
 
     def describe(self, cfg: dict) -> str:
         inf = cfg["inference"]
