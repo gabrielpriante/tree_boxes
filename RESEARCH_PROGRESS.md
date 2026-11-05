@@ -1,11 +1,15 @@
 # Research Progress: Repeated-Observation Benchmark of Computer Vision for Urban Trees
 
-*Frontline Labs · Park Triangle urban-tree benchmark · progress report as of 4 November 2026*
+*Frontline Labs · Park Triangle urban-tree benchmark · progress report as of 5 November 2026*
 
 This report covers the work held in this repository. It draws only on the saved inference records,
 evaluation outputs and human-review files cited in the final section. All findings are **preliminary and
-image-specific**: they come from 30 model trials by two model families on two drone images, with one completed
-human reference.
+image-specific**: they come from 40 model trials (two model families × two drone images × 10 trials), with one
+completed human reference.
+
+They are **exploratory full-frame results**. The two pilot images have not been checked against authoritative
+site boundaries, and at least one of them probably includes substantial area outside the study site (section F).
+They do not establish site-only results.
 
 ---
 
@@ -32,9 +36,9 @@ The outputs are then analysed offline in four separate ways, which answer four d
 All 20 trials succeeded, for a total API cost of **$0.92**. For PT-R1, a human annotator outlined 11 trees, and
 that reference was approved as complete. It is the only image with a completed reference.
 
-The second model, M09 (OpenAI GPT-6.1 Sol at high reasoning effort), was then run 10 times on **PT-R1 only**. It
-received byte-identical image input and the identical prompt, and all 10 trials succeeded for **$0.54**. This
-gives the study its first comparison between model families on one image.
+The second model, M09 (OpenAI GPT-6.1 Sol at high reasoning effort), was then run 10 times on **each of the same
+two images**. It received byte-identical image input and the identical prompt, and all 20 trials succeeded for
+**$1.97**. This completes the first two-site comparison between model families: **40 trials in total**.
 
 **Most important results.**
 
@@ -61,11 +65,26 @@ gives the study its first comparison between model families on one image.
 
   This is one image, one annotator and two configurations. It does not show that either model is better in
   general.
+* **On the dense-canopy image (PT-02), the two models characterize the scene very differently.**
+  * **Counts:** GPT-6.1 Sol returns 41.8 boxes per trial on average, against Claude's 24.5.
+  * **Coverage:** its boxes cover about 62% of the image per trial, against 46%, at a similar median box size.
+  * **Agreement between models** falls from 0.83 on PT-R1 to **0.63** on PT-02 at IoU ≥ 0.50, while each model
+    still agrees with itself at 0.79–0.88. On this image, which model is used changes the result more than
+    re-running the same model.
+  * **No accuracy:** PT-02 has no validated human reference, so **neither model's PT-02 detections, nor their
+    closeness to the site inventory, are evidence of accuracy**.
 
-**State of the study today.** Repeatability analysis is complete for two images with M08, and for PT-R1 with M09.
-Human-reference accuracy is complete for one image (PT-R1), for both models. The M09 run on PT-02 is prepared
-and dry-run tested, awaiting authorization. Comparisons across altitudes have a written design but no supporting
-data or image alignment. The 20-image weekly before/after collection is catalogued but not yet benchmarked.
+**State of the study today.**
+* **Repeatability and cross-model agreement** are complete for both pilot images with M08 and M09.
+* **Human-reference accuracy** is complete for PT-R1 only, for both models.
+* **Site boundaries:** all pilot results are exploratory full-frame observations. Dr. Elizabeth Ondula advised
+  that the primary site-focused analysis should use imagery of the study site rather than substantial
+  surrounding areas. Authoritative boundaries are still being located and verified, and no site-only analysis
+  has been run.
+* **Not yet done:**
+  * DeepForest (M01/M02) is being prepared on the same images, with no inference yet;
+  * comparisons across altitudes have a written design only;
+  * the 20-image weekly collection is catalogued but not benchmarked.
 
 ---
 
@@ -130,7 +149,7 @@ these factors**.
 |---|---|---|
 | **M08** | Claude Opus 5.5 (vision-language model, structured JSON output) | **Completed** for two images (20 trials) |
 | M01, M02 | DeepForest | Recorded in `model_adapters.py` as an existing implementation with frozen results, but **those results are not in this repository** (`deepforest_images/` is empty). Not summarized here. |
-| **M09** | OpenAI GPT-6.1 Sol (vision-language model, Responses API, high reasoning effort, structured JSON output) | **Completed for PT-R1** (10 trials, 4 November 2026). PT-02 dry-run tested, awaiting authorization. |
+| **M09** | OpenAI GPT-6.1 Sol (vision-language model, Responses API, high reasoning effort, structured JSON output) | **Completed** for two images (20 trials, 4 November 2026) |
 | M10 | Gemini | **Planned**; no adapter implemented |
 | Copilot | Microsoft Copilot | **Deferred**: no programmatic endpoint identified |
 | M03–M07 | — | Not documented in this repository |
@@ -354,13 +373,55 @@ The two models therefore usually box the same objects, but outline them differen
 
 ![PT-R1: M08 vs M09](evaluation_results/figures/comparison/LA_PT-R1_27m/K_model_comparison.png)
 
+### M09 (GPT-6.1 Sol) on PT-02, compared with M08 (consistency only)
+
+Experiment `lowalt_pilot_pt02_64m_m09_v1` ran as one batch of 10 trials on 4 November 2026. All 10 succeeded on
+the first attempt with no retries. Image bytes and prompt were identical to the M08 PT-02 run. **PT-02 has no
+complete human reference, so no precision, recall or F1 was computed**, and agreement or count closeness is not
+accuracy.
+
+| Measure (PT-02, 10 trials each) | M08 Claude Opus 5.5 | M09 GPT-6.1 Sol |
+|---|---|---|
+| Counts, trials 1–10 | 23, 23, 25, 28, 25, 23, 24, 22, 26, 26 | 43, 45, 37, 39, 39, 48, 40, 38, 45, 44 |
+| Mean (SD) · CV | 24.5 (1.84) · 7.5% | 41.8 (3.68) · 8.8% |
+| **Within-model agreement**, IoU ≥ 0.50 | 0.875 ± 0.049 | 0.794 ± 0.059 |
+| IoU ≥ 0.75 | 0.721 ± 0.064 | 0.475 ± 0.064 |
+| IoU = 1.00 | 0.103 ± 0.064 | 0 |
+| Trial pairs in full agreement (any threshold) | 0 of 45 | 0 of 45 |
+| **Persistence** at 0.50: locations in 10 / 8–9 / 5–7 / 1–4 trials | 17 / 2 / 3 / 4 | 20 / 1 / 2 / 16 |
+| Ambiguous chained groups at 0.50 (boxes) | 5 (36 of 245) | 16 (171 of 418) |
+| Share of boxes in locations found in every trial | 69% | 48% |
+| **Geometry\*:** median box size (ground estimate) | ≈ 11.3 × 9.6 m | ≈ 11.4 × 10.4 m |
+| Image area covered by a trial's boxes | 46% (42–50%) | 62% (62–63%) |
+| Summed box area ÷ area covered (within-trial overlap) | 1.11 | 1.43 |
+| Cost · mean output tokens per trial | $0.0574 · 1,601 | $0.1435 · 13,316 (12,309 reasoning) |
+
+**Agreement between the models**, across all 100 M08 × M09 trial pairs:
+* 0.627 ± 0.049 at IoU ≥ 0.50 (range 0.50–0.74);
+* 0.198 ± 0.065 at IoU ≥ 0.75;
+* 0 at IoU = 1.00.
+
+On PT-R1 the same measure was 0.828 at IoU ≥ 0.50.
+
+\*The geometry rows were computed on 4 November 2026 from `evaluation_results/detections.csv`, using the
+estimated ground sampling distance in `altitude_series.csv`. They are not yet a standard pipeline output. Coverage
+is the union of a trial's boxes on a 1/16-scale raster. Box sizes in metres inherit the approximations of the GSD
+estimate.
+
+*Sources: `evaluation_results/model_comparison.csv`, `cross_model_agreement.csv`, `iou_summary.csv`,
+`persistence_summary.csv`; figures K and L in `evaluation_results/figures/comparison/LA_PT-02_64m/` and the M09
+figures A–E in `evaluation_results/figures/lowalt_pilot_pt02_64m_m09_v1/LA_PT-02_64m/`.*
+
+![PT-02: M08 vs M09](evaluation_results/figures/comparison/LA_PT-02_64m/K_model_comparison.png)
+
 ---
 
 ## E. Key Scientific Findings
 
-All findings below come from two images, two model configurations and one human reference. M09 was run on PT-R1
-only. Treat them as hypotheses to test, not general conclusions. Findings 1–6 were first established with M08;
-where M09 adds evidence, it is noted.
+All findings below come from two full-frame pilot images, two model configurations (10 trials each per image) and
+one human reference (PT-R1). Treat them as hypotheses to test, not general conclusions. They are exploratory: the
+frames have not been checked against authoritative site boundaries (section F). Findings 1–6 were first
+established with M08; where M09 adds evidence, it is noted.
 
 ### 1. Similar detection counts can conceal spatial instability
 
@@ -519,17 +580,69 @@ differently on each.
 * one annotator.
 
 They are not estimates of how either model performs across images, sites or altitudes. They do not support
-calling either model better in general. The next informative comparison is PT-02, a denser canopy with no
-accuracy reference, where only repeatability and between-model agreement can be compared.
+calling either model better in general.
+
+### 8. Agreement between models depends strongly on the scene
+
+On PT-02, a denser and more contiguous canopy seen from 64 m, the two model families diverge far more than on
+PT-R1:
+
+| | PT-R1 | PT-02 |
+|---|---|---|
+| Agreement between the models, IoU ≥ 0.50 | 0.828 ± 0.158 | **0.627 ± 0.049** |
+| Agreement within each model, IoU ≥ 0.50 (M08 / M09) | 0.919 / 0.838 | 0.875 / 0.794 |
+
+The differences on PT-02 are structural, not noise:
+
+* **Counts:** GPT-6.1 Sol returns about 70% more boxes (41.8 against 24.5 per trial).
+* **Coverage, not subdivision:** its boxes are about the same size as Claude's (median ≈ 11 m across). They cover
+  more of the image (about 62% against 46% per trial) and overlap each other more (summed box area 1.43× the
+  covered area, against 1.11×). So it is not subdividing Claude's crowns into smaller boxes. It boxes additional
+  areas of canopy.
+* **Stability:** M09 is also the less stable model on this image:
+  * fewer of its boxes recur in every trial (48% against 69%);
+  * far more fall into chained, ambiguous groups (171 boxes against 36);
+  * its agreement with itself at IoU ≥ 0.75 is much lower (0.48 against 0.72).
+
+  Its count CV is similar to Claude's (8.8% against 7.5%), which again shows that **similar count stability can
+  hide very different spatial stability** (finding 1).
+
+**What this does not show.** Without a PT-02 reference, it is unknown whether M09's extra boxes are real crowns
+that M08 merges or omits, or non-tree vegetation and other false positives. M08's mean of 24.5 being close to the
+site inventory of 24, and M09's 41.8 being far from it, is **not** evidence about either model's accuracy, for
+two reasons:
+* the image's coverage of the inventoried site is unverified and probably includes out-of-site areas;
+* a matching count can hide both misses and false positives (finding 6).
+
+Site, canopy structure, altitude (27 m against 64 m) and heading all differ between the two images, so the drop
+in between-model agreement cannot be attributed to any one of them.
+
+**For the research question**, the pilot suggests that the approaches characterize an open, sparse planting
+similarly but diverge substantially on dense canopy, in count, in which areas are boxed and in run-to-run
+stability. That is a hypothesis for the site-only analysis, the altitude series and additional model families
+to test.
 
 ---
 
 ## F. Methodological Limitations
 
+* **Full-frame imagery, not verified against site boundaries.** Following Dr. Elizabeth Ondula's guidance, the
+  primary site-focused analysis should use imagery of the actual study site rather than substantial surrounding
+  areas. The two pilot frames have **not** been checked against authoritative PT-R1 or PT-02 boundaries:
+  `coverage_scope` is `UNKNOWN`, and neither Git repository contains a boundary file.
+  * **PT-02:** the 64 m frame (about 93 × 70 m estimated footprint) visibly includes streets and houses, so it
+    probably contains substantial out-of-site area.
+  * **PT-R1:** the 27 m frame is lot-sized, but it includes street and sidewalk margins. Whether its trees are the
+    intended site planting (the rain garden) is unverified.
+  * **What the results represent:** all 40 trials and every figure in this report are **exploratory full-frame
+    observations**, not site-only results. They remain valid records of model behaviour on these exact images.
+  * **Making a site-only analysis:** either mask results to a verified boundary at evaluation time (no new
+    inference; the models still saw the surroundings), or create cropped site-only inputs. Cropping would need
+    new preprocessing, new configuration and experiment IDs, and new inference for every model.
 * **One completed human reference.** Every accuracy number comes from one image with 11 trees. It does not extend
   to PT-02, other altitudes, other dates or other models. **PT-02 currently supports repeatability analysis only,
   not validated individual-tree detection accuracy.**
-* **Small sample.** Thirty paid trials: M08 on two images and M09 on one. The trial-to-trial spread estimates *run-to-run* variation
+* **Small sample.** Forty paid trials: two models × two images × 10 trials. The trial-to-trial spread estimates *run-to-run* variation
   for one fixed input. It is not *image-to-image* or *site-to-site* variation, and it is not an independent
   estimate of accuracy: all ten trials share the same input, prompt and downscaling, and so share their errors.
 * **PT-02 crown boundaries.** In PT-02's dense canopy, individual crowns are often not visually separable. That
@@ -546,9 +659,11 @@ accuracy reference, where only repeatability and between-model agreement can be 
 * **Comparison against site-level inventories.** Inventory counts describe a whole site. Image coverage of each
   site is unconfirmed (`coverage_scope = UNKNOWN`), so inventory comparisons are context, never image-level
   ground truth. The pipeline never uses them to filter or correct predictions.
-* **Two model configurations, unevenly covered.** M08 and M09 were each run at one frozen configuration with one
-  prompt, and M09 so far only on PT-R1. The results say nothing about other configurations, prompts or model
-  families.
+* **Two model configurations.** M08 and M09 were each run at one frozen configuration with one prompt, on the
+  same two images. The results say nothing about other configurations, prompts or model families.
+* **Geometry measures are not yet pipeline outputs.** The PT-02 box-size, coverage and overlap figures come from
+  a documented one-off analysis of `detections.csv` (section D). The ground-size conversions inherit the
+  approximations of the GSD estimate.
 * **Comparability across providers is approximate.**
   * Both models receive identical image bytes, prompt and schema.
   * "High" reasoning effort is a provider-specific setting, not equal computation.
@@ -620,10 +735,10 @@ Two data-integrity problems were caught and resolved without losing any human in
 |---|---|
 | Item | Anthropic (M08) | OpenAI (M09) |
 |---|---|---|
-| Paid trials | 20, all successful | 10 (PT-R1), all successful; one pre-generation connection retry |
-| Confirmed spend | $0.3439 (PT-R1) + $0.5741 (PT-02) = **$0.9179** | **$0.5353** |
-| Remaining under each provider's separate $5 local limit | $4.0821 | $4.4648 |
-| Observed cost per trial | $0.029–0.061 (worst case reserved $0.67) | $0.045–0.074 (worst case reserved $0.335) |
+| Paid trials | 20, all successful | 20, all successful; one connection retry before generation (PT-R1) |
+| Confirmed spend | $0.3439 (PT-R1) + $0.5741 (PT-02) = **$0.9179** | $0.5353 (PT-R1) + $1.4353 (PT-02) = **$1.9705** |
+| Remaining under each provider's separate $5 local limit | $4.0821 | $3.0295 |
+| Observed cost per trial | $0.029–0.061 (worst case reserved $0.67) | $0.045–0.074 PT-R1, $0.108–0.170 PT-02 (worst case reserved $0.335) |
 
 Each provider has its own ledger. All entries are priced from usage reported by the API.
 
@@ -642,6 +757,16 @@ No commit altered model settings, the manifest, human annotations or frozen M08 
 cited as an evaluation state. Use the complete outputs in the current tree, which the reproducibility check
 regenerates exactly.
 
+On 5 November 2026, the M09 PT-02 work was committed on branch `checkpoint/m09-pt02` in scoped, separate
+commits:
+* trial records and ledger (`8170b8d`);
+* evaluation outputs (`698664b`);
+* repository hygiene (`4d4bbd3`);
+* this documentation update.
+
+Regenerable review crops and contact sheets are now git-ignored and kept only locally. Crops tracked earlier,
+including those the PT-R1 labels were made from, remain in Git.
+
 ---
 
 ## H. Current Research Status
@@ -656,9 +781,10 @@ regenerates exactly.
 | **In progress** | Confirmation of `coverage_scope` for all images, and of the week 1 condition labels |
 | **Planned** | M08 runs on more images: the remaining altitude frames and the weekly before/after collection |
 | **Planned** | Human references beyond PT-R1 |
-| **Completed** | M09 (GPT-6.1 Sol): adapter, separate cost ledger and model-comparison tooling; 10 trials on PT-R1 with consistency, accuracy and M08-vs-M09 evaluation |
-| **In progress** | M09 on PT-02: 10 trials prepared and dry-run tested, awaiting authorization (repeatability and between-model agreement only; no reference) |
-| **Planned** | M10 (Gemini) adapter and runs; importing the frozen DeepForest results (M01/M02) |
+| **Completed** | M09 (GPT-6.1 Sol): adapter, separate cost ledger and model-comparison tooling; 10 trials on each pilot image; consistency for both, accuracy for PT-R1, and the M08-vs-M09 comparison on both images (40 pilot trials in total) |
+| **In progress** | Locating and verifying authoritative PT-R1 and PT-02 site boundaries for the primary site-only analysis (Dr. Ondula's guidance); all current results are exploratory full-frame observations |
+| **In progress** | DeepForest M01/M02 on the two pilot images: environment, pinned checkpoint and resolution (GSD) methodology being prepared; no inference yet |
+| **Planned** | M10 (Gemini, 10 trials per image), then local Qwen3-VL via Ollama after hardware checks, then a small held-out DeepForest/NEON-annotated shared-reference set |
 | **Planned** | Across-altitude robustness analysis (design written in `EVALUATION.md`; requires image registration) |
 | **Deferred** | Copilot (no programmatic endpoint) |
 | **Deferred** | Tiling or cropping to raise model input resolution (outside the frozen configuration) |
@@ -691,22 +817,26 @@ marked *offline* need no API spending.
    * a point-based (stem or crown-centre) reference from the field inventory, if georeferenced stem positions
      exist;
    * restricting the reference to a sub-area where crowns are separable.
-6. **Model-family comparison.** Done for M09 on PT-R1. Next steps:
-   * the authorized M09 run on PT-02 (about $0.5–1.6 at the observed token usage; $3.35 worst case);
-   * an M10 (Gemini) adapter;
-   * importing the frozen DeepForest results into the same record format.
+6. **Model-family comparison.** M08 and M09 are complete on both pilot images. The agreed sequence is:
+   * **DeepForest M01/M02** on the same two images, with new experiment IDs; the historical 95 m DeepForest
+     results stay separate;
+   * **M10 Gemini**, 10 trials per image;
+   * **local Qwen3-VL** through Ollama, after hardware checks;
+   * a small held-out **DeepForest/NEON-annotated** shared-reference set.
 
-   Each model should be run on the same images with the same 10-trial protocol and evaluated with the same
-   model-agnostic code. Deterministic models such as DeepForest are expected to show perfect repeatability. That
-   contrast is itself informative.
-7. **Probe the shared misses (offline first).** Before any new paid runs:
+   Each model should be evaluated with the same model-agnostic code. A deterministic model such as DeepForest
+   needs one verified run per configuration rather than ten.
+7. **Site boundaries before the primary analysis.** Obtain authoritative PT-R1 and PT-02 boundaries and verify
+   which part of each frame is the study site, including whether the PT-R1 frame shows the intended rain garden.
+   Then decide between masking at evaluation time and cropped site-only inputs (section F).
+8. **Probe the shared misses (offline first).** Before any new paid runs:
    * tabulate the five trees both models never find against their crown size in model-input pixels, contrast and
      background;
    * check whether a second annotator also marks them.
 
    Only then consider designs that change scale, such as the altitude series or a separately documented tiling
    variant.
-8. **Weekly collection.** After the week 1 labels and coverage are confirmed, the 20 weekly images at about 95 m
+9. **Weekly collection.** After the week 1 labels and coverage are confirmed, the 20 weekly images at about 95 m
    allow repeated-observation analysis over time, which is the core of the research question.
 
 ---
@@ -728,7 +858,7 @@ marked *offline* need no API spending.
 - Inputs: [manifests/manifest.csv](manifests/manifest.csv)
 - Saved trials, one folder per trial:
   - M08: `benchmark_results/lowalt_pilot_ptr1_27m_v1/` and `benchmark_results/lowalt_pilot_pt02_64m_v1/`
-  - M09: `benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/`
+  - M09: `benchmark_results/lowalt_pilot_ptr1_27m_m09_v1/` and `benchmark_results/lowalt_pilot_pt02_64m_m09_v1/`
 
   Each holds `counts_long.csv`, `counts_summary.csv`, `boxes_long.csv` and per-trial records. M09 records also
   hold the exact request as sent (`api_request`) and the provider's echoed settings (`provider_response`).
@@ -768,7 +898,10 @@ marked *offline* need no API spending.
   - `H_reference_detection_frequency.png`
   - `I_reference_vs_predictions_overview.png`
   - `J_error_cases_iou050.png`
-- M09 per-model figures A–J: `evaluation_results/figures/lowalt_pilot_ptr1_27m_m09_v1/LA_PT-R1_27m/`
+- M09 per-model figures: A–J for PT-R1 in `evaluation_results/figures/lowalt_pilot_ptr1_27m_m09_v1/LA_PT-R1_27m/`;
+  A–E for PT-02 in `evaluation_results/figures/lowalt_pilot_pt02_64m_m09_v1/LA_PT-02_64m/`
+- M08 vs M09 on PT-02: `evaluation_results/figures/comparison/LA_PT-02_64m/K_model_comparison.png` and
+  `L_models_side_by_side_iou050.png`
 - M08 vs M09 on PT-R1: `evaluation_results/figures/comparison/LA_PT-R1_27m/K_model_comparison.png` and
   `L_models_side_by_side_iou050.png`
 - Human reference only: `evaluation_results/review/human_reference_LA_PT-R1_27m.jpg`; review contact sheets in
