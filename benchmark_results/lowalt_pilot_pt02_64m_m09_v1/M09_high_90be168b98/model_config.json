@@ -1,0 +1,47 @@
+{
+  "adapter": "openai-responses",
+  "model_code": "M09",
+  "model": "gpt-6.1-sol",
+  "inference": {
+    "api": "OpenAI Responses API (POST /v1/responses)",
+    "effort": "high",
+    "reasoning": {
+      "effort": "high",
+      "summary": null
+    },
+    "max_output_tokens": 32000,
+    "streaming": true,
+    "structured_output": "text.format json_schema strict=true (name 'tree_detections')",
+    "image_detail": "original",
+    "image_context_compression": "disabled",
+    "store": false,
+    "prompt_cache": "explicit mode, no breakpoints (no cache reads or writes)",
+    "service_tier": "default",
+    "truncation": "disabled",
+    "tools": "none",
+    "instructions": "none",
+    "sampling": "provider defaults (temperature/top_p unsupported with reasoning)"
+  },
+  "prompt_template_sha256": "e53504b32a5931a597ebd8499aba89f602d90b720d8a0bb9d9ea92cfc96c100f",
+  "output_schema_sha256": "963a771dd008a68fbca9cb2b42e762d9109fb40cd52423d8b706b7b8e2bc8e38",
+  "coordinates": "normalized 0-1000 [x_min, y_min, x_max, y_max], origin top-left",
+  "preprocessing": {
+    "version": 2,
+    "exif_transpose": true,
+    "color_mode": "RGB",
+    "max_upload_edge_px": 2576,
+    "max_visual_tokens": 4784,
+    "resize": "PIL Image.resize, LANCZOS, to the documented API target size (largest aspect-preserving size within both limits)",
+    "server_resize_guard": "input_image.detail = original; image.context_compression = disabled",
+    "format": "JPEG",
+    "jpeg_qualities_tried": [
+      95,
+      90,
+      85,
+      80,
+      70
+    ],
+    "max_image_bytes": 5242880,
+    "provenance": "identical v2 pipeline and bytes as M08 (target size from Anthropic's limits)"
+  }
+}

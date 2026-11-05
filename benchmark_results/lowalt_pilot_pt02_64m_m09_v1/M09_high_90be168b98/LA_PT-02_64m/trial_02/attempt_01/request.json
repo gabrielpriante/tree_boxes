@@ -1,0 +1,178 @@
+{
+  "record_schema_version": 2,
+  "attempt_uid": "6b137780909d40448d0cca4008d32ce8",
+  "experiment_id": "lowalt_pilot_pt02_64m_m09_v1",
+  "model_config_id": "M09_high_90be168b98",
+  "model_code": "M09",
+  "adapter": "openai-responses",
+  "model": "gpt-6.1-sol",
+  "inference_settings": {
+    "api": "OpenAI Responses API (POST /v1/responses)",
+    "effort": "high",
+    "reasoning": {
+      "effort": "high",
+      "summary": null
+    },
+    "max_output_tokens": 32000,
+    "streaming": true,
+    "structured_output": "text.format json_schema strict=true (name 'tree_detections')",
+    "image_detail": "original",
+    "image_context_compression": "disabled",
+    "store": false,
+    "prompt_cache": "explicit mode, no breakpoints (no cache reads or writes)",
+    "service_tier": "default",
+    "truncation": "disabled",
+    "tools": "none",
+    "instructions": "none",
+    "sampling": "provider defaults (temperature/top_p unsupported with reasoning)"
+  },
+  "pricing": {
+    "currency": "USD",
+    "input_per_mtok": 2.0,
+    "cached_input_per_mtok": 0.1,
+    "cache_write_per_mtok": 2.5,
+    "output_per_mtok": 10.0,
+    "long_context_threshold_input_tokens": 272000,
+    "long_context_input_multiplier": 2.0,
+    "long_context_output_multiplier": 1.5,
+    "service_tier": "default (Standard)",
+    "source": "developers.openai.com/api/docs/models/gpt-6.1-sol (verified 2026-11-04)"
+  },
+  "image_id": "LA_PT-02_64m",
+  "image_path": "drone_images/height/PT_02/PT_02_64m.JPG",
+  "site": "PT-02",
+  "week": "NOT_APPLICABLE",
+  "condition": "ALTITUDE_TEST",
+  "altitude_m": "64.3",
+  "coverage_scope": "UNKNOWN",
+  "collection": "low_altitude",
+  "manifest_sha256": "6c4951119b6af6927ca4a8c3a9e890d02e328ad26d341589e83663211794db99",
+  "trial": 2,
+  "attempt": 1,
+  "image": {
+    "file_sha256": "25f3c331564db9cc9ada0e151bbec16506b8702dd34ce245dc5c671b427c85b4",
+    "original_width": 8192,
+    "original_height": 6144,
+    "upload_width": 2212,
+    "upload_height": 1659,
+    "api_detail": "original",
+    "api_internal_size_observable": false,
+    "api_patches_32px": 3640,
+    "api_estimated_image_tokens": 4368,
+    "upload_jpeg_quality": 95,
+    "upload_bytes": 2604556,
+    "upload_sha256": "d11b8ee12330b179e7cc0db66fed8fac164102671dadba23c1504b913a8e7212"
+  },
+  "prompt_sha256": "bca1b53c438e86b2073c7b6ed3e7153e7128e2a6d802207ea5ab7d6ec2fe9462",
+  "output_schema_sha256": "963a771dd008a68fbca9cb2b42e762d9109fb40cd52423d8b706b7b8e2bc8e38",
+  "prompt_template_sha256": "e53504b32a5931a597ebd8499aba89f602d90b720d8a0bb9d9ea92cfc96c100f",
+  "preprocessing": {
+    "version": 2,
+    "exif_transpose": true,
+    "color_mode": "RGB",
+    "max_upload_edge_px": 2576,
+    "max_visual_tokens": 4784,
+    "resize": "PIL Image.resize, LANCZOS, to the documented API target size (largest aspect-preserving size within both limits)",
+    "server_resize_guard": "input_image.detail = original; image.context_compression = disabled",
+    "format": "JPEG",
+    "jpeg_qualities_tried": [
+      95,
+      90,
+      85,
+      80,
+      70
+    ],
+    "max_image_bytes": 5242880,
+    "provenance": "identical v2 pipeline and bytes as M08 (target size from Anthropic's limits)"
+  },
+  "pre_request_worst_case_usd": 0.330368,
+  "software": {
+    "python": "3.13.12",
+    "pillow": "12.1.1",
+    "openai": "3.45.0"
+  },
+  "started_utc": "2026-11-04T20:18:25+00:00",
+  "api_request": {
+    "model": "gpt-6.1-sol",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "input_image",
+            "image_url": "data:image/jpeg;base64,<omitted: 2604556 bytes, sha256 d11b8ee12330b179e7cc0db66fed8fac164102671dadba23c1504b913a8e7212>",
+            "detail": "original"
+          },
+          {
+            "type": "input_text",
+            "text": "<prompt: 3517 characters, sha256 bca1b53c438e86b2073c7b6ed3e7153e7128e2a6d802207ea5ab7d6ec2fe9462>"
+          }
+        ]
+      }
+    ],
+    "reasoning": {
+      "effort": "high"
+    },
+    "max_output_tokens": 32000,
+    "text": {
+      "format": {
+        "type": "json_schema",
+        "name": "tree_detections",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "site": {
+              "type": "string"
+            },
+            "week": {
+              "type": "string"
+            },
+            "condition": {
+              "type": "string"
+            },
+            "trees": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "tree_id": {
+                    "type": "string"
+                  },
+                  "bbox": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "required": [
+                  "tree_id",
+                  "bbox"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "site",
+            "week",
+            "condition",
+            "trees"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    },
+    "store": false,
+    "truncation": "disabled",
+    "service_tier": "default",
+    "prompt_cache_options": {
+      "mode": "explicit"
+    },
+    "image": {
+      "context_compression": "disabled"
+    },
+    "stream": true
+  }
+}
