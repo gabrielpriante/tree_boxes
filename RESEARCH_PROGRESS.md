@@ -7,9 +7,11 @@ evaluation outputs and human-review files cited in the final section. All findin
 image-specific**: they come from 40 model trials (two model families × two drone images × 10 trials), with one
 completed human reference.
 
-They are **exploratory full-frame results**. The two pilot images have not been checked against authoritative
-site boundaries, and at least one of them probably includes substantial area outside the study site (section F).
-They do not establish site-only results.
+**Image approval.** On 5 November 2026 the project lead personally reviewed both pilot images, `LA_PT-R1_27m` and
+`LA_PT-02_64m`, and **approved them for the cross-model benchmark** as the closest achievable site-focused images.
+The image-suitability decision is closed. The exact files and SHA-256 hashes are preserved for every
+matched-image experiment. The frames include some surrounding context, which is recorded as a methodological
+limitation (section F), not as a blocker.
 
 ---
 
@@ -77,12 +79,12 @@ two images**. It received byte-identical image input and the identical prompt, a
 **State of the study today.**
 * **Repeatability and cross-model agreement** are complete for both pilot images with M08 and M09.
 * **Human-reference accuracy** is complete for PT-R1 only, for both models.
-* **Site boundaries:** all pilot results are exploratory full-frame observations. Dr. Elizabeth Ondula advised
-  that the primary site-focused analysis should use imagery of the study site rather than substantial
-  surrounding areas. Authoritative boundaries are still being located and verified, and no site-only analysis
-  has been run.
+* **Approved images:** Dr. Elizabeth Ondula advised prioritizing imagery focused on the study site over imagery
+  with substantial surrounding areas. The project lead has reviewed both pilot images and approved them as the
+  closest achievable site-focused images. They are used unchanged, with no boundary mask or crop, for all
+  matched-image comparisons.
 * **Not yet done:**
-  * DeepForest (M01/M02) is being prepared on the same images, with no inference yet;
+  * DeepForest (M01/M02) on the two approved images: environment and configuration prepared, inference next;
   * comparisons across altitudes have a written design only;
   * the 20-image weekly collection is catalogued but not benchmarked.
 
@@ -419,8 +421,8 @@ figures A–E in `evaluation_results/figures/lowalt_pilot_pt02_64m_m09_v1/LA_PT-
 ## E. Key Scientific Findings
 
 All findings below come from two full-frame pilot images, two model configurations (10 trials each per image) and
-one human reference (PT-R1). Treat them as hypotheses to test, not general conclusions. They are exploratory: the
-frames have not been checked against authoritative site boundaries (section F). Findings 1–6 were first
+one human reference (PT-R1). Treat them as hypotheses to test, not general conclusions. Both frames are the approved
+site-focused images and include some surrounding context (section F). Findings 1–6 were first
 established with M08; where M09 adds evidence, it is noted.
 
 ### 1. Similar detection counts can conceal spatial instability
@@ -611,7 +613,7 @@ The differences on PT-02 are structural, not noise:
 that M08 merges or omits, or non-tree vegetation and other false positives. M08's mean of 24.5 being close to the
 site inventory of 24, and M09's 41.8 being far from it, is **not** evidence about either model's accuracy, for
 two reasons:
-* the image's coverage of the inventoried site is unverified and probably includes out-of-site areas;
+* the frame also contains surrounding context, so image counts are not site-level counts;
 * a matching count can hide both misses and false positives (finding 6).
 
 Site, canopy structure, altitude (27 m against 64 m) and heading all differ between the two images, so the drop
@@ -619,26 +621,21 @@ in between-model agreement cannot be attributed to any one of them.
 
 **For the research question**, the pilot suggests that the approaches characterize an open, sparse planting
 similarly but diverge substantially on dense canopy, in count, in which areas are boxed and in run-to-run
-stability. That is a hypothesis for the site-only analysis, the altitude series and additional model families
+stability. That is a hypothesis for further images, the altitude series and additional model families
 to test.
 
 ---
 
 ## F. Methodological Limitations
 
-* **Full-frame imagery, not verified against site boundaries.** Following Dr. Elizabeth Ondula's guidance, the
-  primary site-focused analysis should use imagery of the actual study site rather than substantial surrounding
-  areas. The two pilot frames have **not** been checked against authoritative PT-R1 or PT-02 boundaries:
-  `coverage_scope` is `UNKNOWN`, and neither Git repository contains a boundary file.
-  * **PT-02:** the 64 m frame (about 93 × 70 m estimated footprint) visibly includes streets and houses, so it
-    probably contains substantial out-of-site area.
-  * **PT-R1:** the 27 m frame is lot-sized, but it includes street and sidewalk margins. Whether its trees are the
-    intended site planting (the rain garden) is unverified.
-  * **What the results represent:** all 40 trials and every figure in this report are **exploratory full-frame
-    observations**, not site-only results. They remain valid records of model behaviour on these exact images.
-  * **Making a site-only analysis:** either mask results to a verified boundary at evaluation time (no new
-    inference; the models still saw the surroundings), or create cropped site-only inputs. Cropping would need
-    new preprocessing, new configuration and experiment IDs, and new inference for every model.
+* **Surrounding context in the approved frames.** Dr. Elizabeth Ondula advised prioritizing imagery focused on the
+  study site. The project lead reviewed both pilot images and approved them as the closest achievable
+  site-focused images (5 November 2026). They are used whole: no site boundary, mask or crop is applied.
+  * **PT-02:** the frame (about 93 × 70 m estimated footprint) also shows neighbouring streets and buildings.
+  * **PT-R1:** the frame includes street and sidewalk margins.
+  * **Consequences:** detections and disagreements in these margins count in every metric, for every model
+    alike. Image-level results are therefore not site-level quantities, and the site inventories remain context
+    only.
 * **One completed human reference.** Every accuracy number comes from one image with 11 trees. It does not extend
   to PT-02, other altitudes, other dates or other models. **PT-02 currently supports repeatability analysis only,
   not validated individual-tree detection accuracy.**
@@ -782,7 +779,7 @@ including those the PT-R1 labels were made from, remain in Git.
 | **Planned** | M08 runs on more images: the remaining altitude frames and the weekly before/after collection |
 | **Planned** | Human references beyond PT-R1 |
 | **Completed** | M09 (GPT-6.1 Sol): adapter, separate cost ledger and model-comparison tooling; 10 trials on each pilot image; consistency for both, accuracy for PT-R1, and the M08-vs-M09 comparison on both images (40 pilot trials in total) |
-| **In progress** | Locating and verifying authoritative PT-R1 and PT-02 site boundaries for the primary site-only analysis (Dr. Ondula's guidance); all current results are exploratory full-frame observations |
+| **Completed** | Pilot image suitability: `LA_PT-R1_27m` and `LA_PT-02_64m` reviewed and approved by the project lead as the closest achievable site-focused images (5 November 2026); decision closed |
 | **In progress** | DeepForest M01/M02 on the two pilot images: environment, pinned checkpoint and resolution (GSD) methodology being prepared; no inference yet |
 | **Planned** | M10 (Gemini, 10 trials per image), then local Qwen3-VL via Ollama after hardware checks, then a small held-out DeepForest/NEON-annotated shared-reference set |
 | **Planned** | Across-altitude robustness analysis (design written in `EVALUATION.md`; requires image registration) |
@@ -826,17 +823,14 @@ marked *offline* need no API spending.
 
    Each model should be evaluated with the same model-agnostic code. A deterministic model such as DeepForest
    needs one verified run per configuration rather than ten.
-7. **Site boundaries before the primary analysis.** Obtain authoritative PT-R1 and PT-02 boundaries and verify
-   which part of each frame is the study site, including whether the PT-R1 frame shows the intended rain garden.
-   Then decide between masking at evaluation time and cropped site-only inputs (section F).
-8. **Probe the shared misses (offline first).** Before any new paid runs:
+7. **Probe the shared misses (offline first).** Before any new paid runs:
    * tabulate the five trees both models never find against their crown size in model-input pixels, contrast and
      background;
    * check whether a second annotator also marks them.
 
    Only then consider designs that change scale, such as the altitude series or a separately documented tiling
    variant.
-9. **Weekly collection.** After the week 1 labels and coverage are confirmed, the 20 weekly images at about 95 m
+8. **Weekly collection.** After the week 1 labels and coverage are confirmed, the 20 weekly images at about 95 m
    allow repeated-observation analysis over time, which is the core of the research question.
 
 ---
