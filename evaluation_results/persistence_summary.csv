@@ -1,4 +1,7 @@
 experiment_id,model_config_id,site,image_id,iou_threshold,n_trials,detections_total,groups_all 10_trials,groups_8-9_trials,groups_5-7_trials,groups_1-4_trials,ambiguous_groups,detections_in_ambiguous_groups,detections_in_all_trial_groups_fraction
+lowalt_pilot_pt02_64m_m09_v1,M09_high_90be168b98,PT-02,LA_PT-02_64m,0.50,10,418,20,1,2,16,16,171,0.478469
+lowalt_pilot_pt02_64m_m09_v1,M09_high_90be168b98,PT-02,LA_PT-02_64m,0.75,10,418,3,0,2,81,36,271,0.07177
+lowalt_pilot_pt02_64m_m09_v1,M09_high_90be168b98,PT-02,LA_PT-02_64m,1.00,10,418,0,0,0,418,0,0,0
 lowalt_pilot_pt02_64m_v1,M08_high_a28fe01ac5,PT-02,LA_PT-02_64m,0.50,10,245,17,2,3,4,5,36,0.693878
 lowalt_pilot_pt02_64m_v1,M08_high_a28fe01ac5,PT-02,LA_PT-02_64m,0.75,10,245,9,1,4,15,13,104,0.367347
 lowalt_pilot_pt02_64m_v1,M08_high_a28fe01ac5,PT-02,LA_PT-02_64m,1.00,10,245,0,0,4,171,0,0,0
