@@ -116,6 +116,9 @@ offset, width and height CV, and mean and minimum IoU between members, all in or
      Their crops show every trial's box (colour = trial).
    * **Ambiguous groups** are split into individual detections. In those crops, pink is the unit under review
      and grey shows the other members.
+   * **Version control:** crops and contact sheets are regenerated exactly by every evaluation run, so new ones
+     are git-ignored and kept only locally (since 5 November 2026). Crops committed earlier, including those the
+     PT-R1 labels were made from, remain tracked.
 3. In `human_review/manual_review.csv`, set `human_label` to `TREE`, `NON_TREE` or `UNCERTAIN`. Optionally add
    `human_note`, `reviewer` and `review_date`. Blank means not reviewed; invalid labels are reported, not used.
 4. **Missed trees:** add a row to `human_review/reference_boxes.csv` for each tree, with `x_min_px … y_max_px`

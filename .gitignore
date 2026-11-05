@@ -1,13 +1,30 @@
 # API credentials: never commit
 .env
+.env.*
+!.env.example
 
 # Python
 __pycache__/
 *.pyc
 .pytest_cache/
+.venv/
+venv/
+.ipynb_checkpoints/
 
 # Partial writes from the benchmark runner
 *.tmp
+*.log
 
 # Offline mock runs (never real results)
 benchmark_results_mock/
+
+# OS, sync and editor clutter (incl. Excel lock files such as ~$manual_review.csv)
+Thumbs.db
+desktop.ini
+~$*
+
+# Regenerable review materials: evaluate_consistency.py rebuilds these exactly from the
+# saved records, source images and code. Files already tracked (e.g. the crops human labels
+# were made from) stay tracked; only new ones are kept local.
+evaluation_results/review/crops/
+evaluation_results/review/contact_sheet_*.png
