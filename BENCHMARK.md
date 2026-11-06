@@ -52,7 +52,7 @@ Anthropic's guide notes that Claude handles pixel coordinates better than normal
 coordinates. The 0–1000 convention is a fixed design decision here and was not changed, but it is
 worth stating as a methodological caveat.
 
-## M09: OpenAI GPT-6.1 Sol (implemented; not yet run)
+## M09: OpenAI GPT-6.1 Sol (completed 4 November 2026: 10 trials on each pilot image)
 
 M09 is the first OpenAI comparison. It reuses the M08 pipeline unchanged: same manifest, preprocessing,
 prompt, schema, trial protocol, record format and evaluation. Only the transport differs. The model page,
@@ -163,6 +163,202 @@ python benchmark_runner.py --manifest manifests/manifest.csv --model M09 --image
 python benchmark_runner.py --manifest manifests/manifest.csv --model M09 --image-ids LA_PT-R1_27m --runs 10 --max-usd 5 --experiment-id lowalt_pilot_ptr1_27m_m09_v1 --pause-after 1 --resume --execute
 ```
 
+## M10: Google Gemini 3.1 Pro Preview (implemented and tested offline; not yet run)
+
+M10 is the third general-purpose vision-language model. It reuses the M08/M09 pipeline unchanged: same manifest,
+preprocessing, submitted JPEG bytes, prompt, schema, trial protocol, record format and evaluation. Only the
+transport differs.
+
+**How this was verified (2026-11-05).** Google's model page, deprecations page, pricing page, thinking guide,
+media-resolution guide, caching guide and `generateContent` API reference were checked. The request format was
+then confirmed against the source of the official SDK (`google-genai==2.34.0`) and by capturing the SDK's real
+HTTP body offline (mock transport; no request reached Google).
+
+| Setting | Value |
+|---|---|
+| Model | `gemini-3.1-pro-preview` (Gemini 3.1 Pro; preview; released 19 February 2026; no shutdown date announced) |
+| API | Gemini Developer API `generateContent` (`POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent`) through `client.models.generate_content` |
+| Thinking | `thinking_config.thinking_level = HIGH`, set explicitly. `HIGH` is also the documented default; the model supports `LOW`, `MEDIUM` and `HIGH`. `include_thoughts = false` (no thought summaries); no `thinking_budget`. |
+| `max_output_tokens` | 32,000, the M08/M09 limit. It covers thinking plus the visible answer (model maximum 65,536). |
+| Output | `response_mime_type = application/json` with `response_json_schema` set to the **same schema object** as M08/M09 (SHA-256 `963a771d…`), passed unchanged. No Gemini-specific schema conversion was needed. |
+| Prompt | The identical prompt text (template SHA-256 `e53504b3…`), in one user turn **after** the image, as in M08/M09; no system instruction. |
+| Image | The **identical upload bytes** (2212 × 1659 JPEG, `image/jpeg`, inline data), with per-part `media_resolution = MEDIA_RESOLUTION_ULTRA_HIGH` |
+| Independence | Stateless `generateContent`, one request per trial. No chat history, tools, function calling, Google Search grounding, code execution, URL context or `cached_content`. |
+| Sampling | Provider defaults (temperature, top_p, top_k and seed not set). Safety settings: provider defaults. |
+| Retries | SDK retries disabled (`attempts=1`). The adapter retries and logs 429/503 and connection failures before the request reaches the server. |
+| Budget | Separate ledger `spend_ledger/gemini_api_ledger.jsonl`; proposed `--max-usd 5` |
+| Config id | `M10_high_177c41fb69` |
+
+**Media resolution: `ultra_high` is used, and it is checked.**
+* **Documentation.** Google's media-resolution guide gives the image token budgets for Gemini 3 models: `low` 280,
+  `medium` 560, `high` 1,120 (also the default), `ultra_high` 2,240. It states that `ultra_high` is available
+  **only as a per-content-item setting**. It cannot be set globally in `generation_config`.
+* **SDK and API support.** The SDK has `Part.media_resolution` with `PartMediaResolutionLevel.MEDIA_RESOLUTION_ULTRA_HIGH`.
+  Its Developer-API converter forwards it as `mediaResolution` on the image part. The `generateContent` reference lists
+  `MEDIA_RESOLUTION_ULTRA_HIGH` for parts. The offline capture confirms the serialized body contains
+  `"mediaResolution": {"level": "MEDIA_RESOLUTION_ULTRA_HIGH"}` on the image part.
+* **Not yet verified against the live API.** Whether `gemini-3.1-pro-preview` accepts it can only be shown by a
+  real request. No such request has been made. Two safeguards cover both failure modes, and the run never falls
+  back to another level:
+  * **Rejection:** a rejected setting returns HTTP 400. That is fatal and unbilled, and the run stops.
+  * **Silent fallback:** if a response reports **1,120 or fewer image tokens** (the `high` budget), the trial is
+    recorded as an error ("experiment condition not honoured") with its actual cost, and the run stops.
+* **Recorded per trial:** each record stores the reported image token count (`usage.image_input_tokens`) and the
+  check result (`provider_response.media_resolution_check`).
+* **Cost:** `ultra_high` doubles the image's input tokens relative to `high` (2,240 against 1,120). That adds about
+  $0.002 per trial, which is negligible.
+* **What remains unknown:** Google does not report the pixel size it processes. The records show what was submitted
+  and the token count Google reports, not the internal pixel representation. That representation is not claimed
+  to equal Claude's or GPT's.
+
+**Preview endpoint and versioning.**
+* `gemini-3.1-pro-preview` is a preview model with no dated snapshot. Google can update the model behind the name
+  and will deprecate it with notice. The deprecations page gives shutdown dates as the "earliest possible".
+* Each record stores the `modelVersion` Google returns. A served model other than `gemini-3.1-pro-preview` stops the
+  run.
+* All 20 pilot trials should run within a short period, so they share one model state as far as can be controlled.
+* Google's documentation now also describes newer models (Gemini 3.6/3.8 Flash, Gemini 4 Argon) and an Interactions
+  API. `generateContent` is used because it is stateless by construction and fully supported by the SDK and REST
+  reference for this model. The model was not substituted.
+
+**Implicit caching.**
+* Google applies implicit prompt caching to Gemini 2.5+ models by default, and the documentation gives no way to
+  turn it off. The minimum cacheable prompt for this model is 4,096 tokens. An M10 request is about 3,100–3,300
+  tokens (2,240 image + about 880–1,000 text), so cache hits are **not expected**, but they cannot be excluded.
+* `cachedContentTokenCount` is recorded and priced at the cached rate.
+* A cache hit reuses identical input processing. It cannot carry information from an earlier response, because no
+  response is ever sent back.
+
+**Usage and cost accounting.**
+* `usageMetadata` is stored raw (`usage.raw_usage_metadata`) and normalized:
+  * `input_tokens` = `promptTokenCount` (includes cache hits);
+  * `output_tokens` = `candidatesTokenCount` + `thoughtsTokenCount` (Google bills thinking as output).
+* If `thoughtsTokenCount` is missing, output is derived from `totalTokenCount` and the method is recorded.
+* If Google omits the usage needed to price a response, the trial is charged the pre-request **worst-case bound**
+  (`cost_basis: worst_case_bound (provider usage incomplete)`), never a guess.
+* The exact HTTP response body is stored in `response_raw.json` (`http.body`) beside the SDK's parsed form.
+  Thought signatures in it are opaque, as with M09's encrypted reasoning.
+
+**Prices.** Gemini Developer API, paid tier, Standard, prompts ≤ 200K tokens; checked 2026-11-05 at
+aistudio.google.com/docs/pricing. There is no free tier for this model.
+
+| Item | Price per million tokens |
+|---|---|
+| Input (text and image) | $2.00 |
+| Output, including thinking | $12.00 |
+| Cached input | $0.20 |
+| Prompts over 200K (not reachable here) | $4.00 input / $18.00 output |
+
+**Cost estimates** use input ≈ 5,400 tokens, the budget guard's conservative pre-request estimate (about $0.011 per
+trial). Output is unknown until the first trial. The expected range is taken from M09's observed 3.5–6.4K (PT-R1)
+and 9.7–16K (PT-02) output tokens.
+
+| Run | Expected | Conservative (20K output/trial) | Worst case (32K output/trial) |
+|---|---|---|---|
+| 1 PT-R1 compatibility trial | $0.05–0.09 | $0.25 | $0.39 |
+| 10 PT-R1 trials | $0.5–0.9 | $2.5 | $3.95 |
+| 10 PT-02 trials | $1.3–2.0 | $2.5 | $3.95 |
+| Full pilot, 20 trials | $1.8–2.9 | $5.0 | $7.90 |
+
+**Proposed budget.**
+* A **$5** local limit covers the expected scenario with a wide margin, but it does **not** guarantee all 20 trials.
+* The guard reserves $0.395 per trial before each request and stops cleanly when that reservation no longer fits.
+* Review the compatibility trial's actual output tokens before deciding whether $5 suffices. Keep the thinking level
+  and media resolution as they are.
+* A limit of $8 would cover the worst case for all 20 trials. The local limit is a safeguard, not authorization to
+  spend.
+
+**Safeguards specific to M10.**
+* **Credentials and endpoint:** the key is read from `GEMINI_API_KEY` in `.env` and passed explicitly. The client
+  pins the Developer API (`vertexai=False`), the base URL and `v1beta`. `GOOGLE_API_KEY`, `GOOGLE_GEMINI_BASE_URL`
+  or `GOOGLE_GENAI_USE_VERTEXAI` in the environment therefore cannot change the credentials or the destination.
+* **Fatal errors:** HTTP 400/401/403/404/413 are fatal, never retried and unbilled. That includes an unsupported
+  setting.
+* **Possibly billed errors:** 500/504, read timeouts and unparseable responses are not retried and are charged the
+  worst case. The runner's next attempt re-checks the budget first.
+* **Outcome mapping:** `finishReason` `MAX_TOKENS` maps to `max_tokens`; safety, recitation, blocklist,
+  prohibited-content and SPII reasons, or a blocked prompt (`promptFeedback.blockReason`), map to `refusal`. No
+  candidates, or another finish reason, is an error charged at reported usage.
+* **Input equivalence:** before execution, and in every dry run, the runner checks the source-file hash, submitted
+  JPEG bytes, size, quality and prompt hash against **every successful M08 and M09 record** for the image (read-only,
+  from `benchmark_results/`). It refuses to send anything if they differ. The check result is stored in each M10
+  record (`image.reference_input_check`).
+* **Secrets:** Google API keys (`AIza…`, `x-goog-api-key`, `?key=`) are redacted from stored errors and raw bodies.
+  The request record never contains the key.
+
+**Differences from M08 and M09, kept on purpose and documented.**
+
+| | M08 Claude Opus 5.5 | M09 GPT-6.1 Sol | M10 Gemini 3.1 Pro Preview | M01 / M02 v2 DeepForest |
+|---|---|---|---|---|
+| Kind | general VLM | general VLM | general VLM | purpose-built RetinaNet tree-crown detector |
+| Input pixels | 2212 × 1659 JPEG | the same bytes | the same bytes | 8192 × 6144 original / resample to a nominal 10 cm/px |
+| Image encoding | 28 px patches (documented) | 32 px patches (assumed); `detail: original` | fixed budget per media-resolution level; `ultra_high` (2,240 tokens) | 400 px windows, internally ×2 |
+| Reasoning | adaptive thinking, effort `high` | `reasoning.effort: high` | `thinking_level: HIGH` | none |
+| Structured output | `output_config.format` JSON schema | `text.format` JSON schema, strict | `responseJsonSchema` | n/a (boxes and scores) |
+| Model versioning | dated model id | model id | preview id; `modelVersion` recorded | pinned checkpoint revision and hash |
+| Usage reported | input/output tokens | input/output/reasoning tokens | prompt/candidates/thoughts/cached tokens | none (local) |
+| Repeatability | stochastic: 10 trials | stochastic: 10 trials | stochastic: 10 trials planned | deterministic: one output, bit-identical rerun |
+
+The three providers' "high" reasoning settings are not computationally equivalent budgets.
+
+**Setting up the Gemini API key (manual; nothing is created automatically).**
+
+1. Open Google AI Studio (aistudio.google.com) and sign in with the Google account that should own the
+   project's billing.
+2. Open **Get API key** and create a key. AI Studio asks for a Google Cloud project: choose (or create) one used
+   only for this benchmark, so its spending and limits are isolated.
+3. Gemini 3.1 Pro Preview has **no free tier**. Link a Cloud Billing account to that project (AI Studio offers
+   "Set up billing"; or use Google Cloud console → Billing).
+4. In AI Studio, check the project's tier and rate limits (Usage / Rate limits) and that `gemini-3.1-pro-preview`
+   is listed for the key. Only metadata pages; no model call.
+5. In Google Cloud console → Billing → **Budgets & alerts**, create a budget for the project (for example $10) with
+   alerts at 50%, 90% and 100%. Budget alerts notify; they do not stop spending. The runner's `--max-usd` guard is
+   what stops requests. Optionally restrict the key to the Generative Language API (Credentials → API key →
+   API restrictions).
+6. Add one line to the existing `.env` in this folder, `GEMINI_API_KEY=<the key>`, with a text editor. Do not
+   paste the key anywhere else. `.env` is git-ignored; `.env.example` shows the variable name only. If a
+   `GOOGLE_API_KEY` is set in your shell for other tools, it is ignored by this adapter.
+7. Check locally, without contacting Google, that the key is loaded (prints only True or False):
+
+```powershell
+python -c "import os, box_generation as bg; bg.load_env(); print('GEMINI_API_KEY configured:', bool(os.environ.get('GEMINI_API_KEY')))"
+```
+
+**Commands.** Dry runs and the mock rehearsal make no Google request. The paid commands require authorization.
+
+```powershell
+# 1. PT-R1 dry run (plan, input-equivalence check, cost bounds; nothing sent or written)
+python benchmark_runner.py --manifest manifests/manifest.csv --model M10 --image-ids LA_PT-R1_27m --runs 10 --max-usd 5 --experiment-id lowalt_pilot_ptr1_27m_m10_v1 --dry-run
+
+# 2. PT-02 dry run
+python benchmark_runner.py --manifest manifests/manifest.csv --model M10 --image-ids LA_PT-02_64m --runs 10 --max-usd 5 --experiment-id lowalt_pilot_pt02_64m_m10_v1 --dry-run
+
+# Optional offline rehearsal with the M10 mock (writes only to benchmark_results_mock/, git-ignored)
+python benchmark_runner.py --manifest manifests/manifest.csv --model M10 --mock --image-ids LA_PT-R1_27m --runs 10 --max-usd 5 --experiment-id lowalt_pilot_ptr1_27m_m10_v1 --pause-after 1 --execute
+
+# 3. PAID: one PT-R1 compatibility trial (stops at the first invalid/refused/truncated response)
+python benchmark_runner.py --manifest manifests/manifest.csv --model M10 --image-ids LA_PT-R1_27m --runs 1 --max-usd 5 --experiment-id lowalt_pilot_ptr1_27m_m10_v1 --pause-after 1 --execute
+
+# 4. PAID: resume PT-R1 to ten trials (trial 1 is kept; only trials 2-10 run)
+python benchmark_runner.py --manifest manifests/manifest.csv --model M10 --image-ids LA_PT-R1_27m --runs 10 --max-usd 5 --experiment-id lowalt_pilot_ptr1_27m_m10_v1 --pause-after 1 --resume --execute
+
+# 5. PAID: all ten PT-02 trials in one batch (default pause after 3 consecutive invalid/refused/truncated)
+python benchmark_runner.py --manifest manifests/manifest.csv --model M10 --image-ids LA_PT-02_64m --runs 10 --max-usd 5 --experiment-id lowalt_pilot_pt02_64m_m10_v1 --execute
+
+# 6. Offline five-configuration evaluation (new folder; earlier evaluation folders untouched)
+python evaluate_consistency.py --output-dir evaluation_results_lowalt_v1_m10
+```
+
+**After the compatibility trial, check:**
+* `status` and `tree_count`;
+* `provider_response.model_version`;
+* `provider_response.media_resolution_check` and `usage.image_input_tokens` (expected about 2,240);
+* `usage.thoughts_tokens`, `usage.cached_input_tokens` and `estimated_cost_usd`;
+* the annotated image;
+* `spend_ledger/gemini_api_ledger.jsonl`.
+
+Then decide whether to continue.
+
 ## Files
 
 | File | Purpose |
@@ -172,9 +368,12 @@ python benchmark_runner.py --manifest manifests/manifest.csv --model M09 --image
 | `manifests/manifest.csv` | Image list and metadata (edit by hand to complete or confirm fields) |
 | `manifests/METADATA_REVIEW.md` | Fields awaiting your confirmation, October 24 images first |
 | `spend_ledger/anthropic_api_ledger.jsonl` | Project-wide spending ledger (created on the first paid request) |
-| `model_adapters.py` | `ClaudeAdapter` (M08), `OpenAIAdapter` (M09), `MockAdapter` / `MockOpenAIAdapter` (offline), placeholders for M01/M02/M10/Copilot |
-| `benchmark_runner.py` | Batch runner |
+| `spend_ledger/openai_api_ledger.jsonl` | OpenAI (M09) spending ledger |
+| `spend_ledger/gemini_api_ledger.jsonl` | Google Gemini (M10) spending ledger (created on the first paid M10 request) |
+| `model_adapters.py` | `ClaudeAdapter` (M08), `OpenAIAdapter` (M09), `GeminiAdapter` (M10), `MockAdapter` / `MockOpenAIAdapter` / `MockGeminiAdapter` (offline), placeholder for Copilot |
+| `benchmark_runner.py` | Batch runner (`--model M08`, `M09` or `M10`) |
 | `tests/test_benchmark.py` | Offline tests (`python -m pytest tests -q`) |
+| `tests/test_gemini_adapter.py` | Offline M10 tests (real SDK over an in-memory transport; no network) |
 
 ## Manifest
 
