@@ -6,7 +6,8 @@ The batch runner owns everything else: trial bookkeeping, budget, validation,
 rendering, and CSV output, so every model shares the same result format.
 
 Implemented:  M08 Claude Opus 5.5 (ClaudeAdapter), M09 OpenAI GPT-6.1 Sol (OpenAIAdapter),
-              plus MockAdapter for offline tests.
+              M10 Google Gemini 3.1 Pro Preview (GeminiAdapter),
+              plus MockAdapter / MockOpenAIAdapter / MockGeminiAdapter for offline tests.
 Planned:      see PLANNED_ADAPTERS.
 """
 
@@ -22,7 +23,9 @@ from dataclasses import dataclass, field
 
 import box_generation as bg
 
-_SECRET_PATTERNS = [re.compile(r"sk-[A-Za-z0-9_\-*.]{4,}"), re.compile(r"(?i)bearer\s+\S+")]
+_SECRET_PATTERNS = [re.compile(r"sk-[A-Za-z0-9_\-*.]{4,}"), re.compile(r"(?i)bearer\s+\S+"),
+                    re.compile(r"AIza[0-9A-Za-z_\-]{10,}"),                       # Google API keys
+                    re.compile(r"(?i)(x-goog-api-key|[?&]key)\s*[:=]\s*[^\s&\"',}]+")]
 
 
 def redact_secrets(text):
@@ -50,9 +53,10 @@ IMAGE_TOKEN_UPPER_BOUND = bg.MAX_VISUAL_TOKENS
 REQUEST_OVERHEAD_TOKENS = 2000
 
 PLANNED_ADAPTERS = {
-    "M01": "DeepForest (existing implementation; results are frozen, adapter not implemented)",
-    "M02": "DeepForest (existing implementation; results are frozen, adapter not implemented)",
-    "M10": "Gemini (adapter not implemented)",
+    "M01": "DeepForest: local inference in urban-tree-vision-baselines, imported with import_deepforest.py "
+           "(no API adapter)",
+    "M02": "DeepForest: local inference in urban-tree-vision-baselines, imported with import_deepforest.py "
+           "(no API adapter)",
     "COPILOT": "Microsoft Copilot (programmatic endpoint not yet identified)",
 }
 
@@ -74,6 +78,9 @@ class AdapterResult:
     retries: list = field(default_factory=list)
     stop_detail: str | None = None  # provider-specific reason behind stop_reason, e.g. "content_filter"
     provider_response: dict = field(default_factory=dict)  # effective settings echoed by the provider
+    # False when the provider did not report enough usage to price the response. The runner then books the
+    # pre-request worst-case bound instead of inventing a cost.
+    usage_complete: bool = True
 
 
 def _sha256_text(s: str) -> str:
@@ -587,6 +594,395 @@ class OpenAIAdapter(_OpenAIBehaviour, ModelAdapter):
             self._sleep(wait)
 
 
+# ---------------------------------------------------------------- M10: Google Gemini 3.1 Pro Preview
+
+GEMINI_MODEL = "gemini-3.1-pro-preview"            # preview endpoint; Google lists no dated snapshot
+GEMINI_THINKING_LEVEL = "HIGH"                     # explicit; supported levels for this model: LOW, MEDIUM, HIGH
+GEMINI_INCLUDE_THOUGHTS = False                    # no thought summaries requested
+GEMINI_MEDIA_RESOLUTION = "MEDIA_RESOLUTION_ULTRA_HIGH"   # per-part only; not settable globally
+GEMINI_MAX_OUTPUT_TOKENS = bg.MAX_TOKENS           # 32,000, the M08/M09 limit (model maximum: 65,536)
+GEMINI_API_VERSION = "v1beta"
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/"
+GEMINI_ENDPOINT = f"{GEMINI_BASE_URL}{GEMINI_API_VERSION}/models/{GEMINI_MODEL}:generateContent"
+GEMINI_IMAGE_MIME = "image/jpeg"
+GEMINI_TIMEOUT_S = 1800.0
+# Documented per-image token budgets for Gemini 3 media resolution levels (media-resolution guide).
+GEMINI_IMAGE_TOKENS = {"MEDIA_RESOLUTION_LOW": 280, "MEDIA_RESOLUTION_MEDIUM": 560,
+                       "MEDIA_RESOLUTION_HIGH": 1120, "MEDIA_RESOLUTION_ULTRA_HIGH": 2240}
+# A reported image token count at or below the HIGH budget means the image was not processed at ULTRA_HIGH.
+GEMINI_FALLBACK_IMAGE_TOKENS = GEMINI_IMAGE_TOKENS["MEDIA_RESOLUTION_HIGH"]
+
+# Gemini Developer API paid tier, Standard, USD per million tokens, for gemini-3.1-pro-preview.
+# Output includes thinking tokens. Prompts over 200K tokens use the higher rates (not reachable here).
+# No free tier for this model. Implicit-cache hits are billed at the cached rate.
+GEMINI_3_1_PRO_PREVIEW_PRICING = {
+    "currency": "USD",
+    "input_per_mtok": 2.00,
+    "output_per_mtok": 12.00,
+    "cached_input_per_mtok": 0.20,
+    "long_context_threshold_input_tokens": 200_000,
+    "long_context_input_per_mtok": 4.00,
+    "long_context_output_per_mtok": 18.00,
+    "long_context_cached_input_per_mtok": 0.40,
+    "service_tier": "standard (request leaves service_tier unset; SDK default is standard)",
+    "free_tier": "not available for this model",
+    "source": "aistudio.google.com/docs/pricing (Gemini 3.1 Pro Preview, Standard; verified 2026-11-05)",
+}
+
+
+def gemini_request_record(jpeg_bytes: bytes, prompt: str) -> dict:
+    """The REST request google-genai sends for one M10 trial, with the image and prompt replaced by hashes.
+    A test captures the SDK's real HTTP body offline and checks it equals this (apart from those two values)."""
+    return {
+        "method": "POST",
+        "url": GEMINI_ENDPOINT,
+        "body": {
+            "contents": [{
+                "parts": [
+                    {"mediaResolution": {"level": GEMINI_MEDIA_RESOLUTION},
+                     "inlineData": {"data": f"<omitted: {len(jpeg_bytes)} bytes, sha256 "
+                                            f"{hashlib.sha256(jpeg_bytes).hexdigest()}>",
+                                    "mime_type": GEMINI_IMAGE_MIME}},
+                    {"text": f"<prompt: {len(prompt)} characters, sha256 {_sha256_text(prompt)}>"},
+                ],
+                "role": "user",
+            }],
+            "generationConfig": {
+                "candidateCount": 1,
+                "maxOutputTokens": GEMINI_MAX_OUTPUT_TOKENS,
+                "responseMimeType": "application/json",
+                "responseJsonSchema": bg.OUTPUT_SCHEMA,
+                "thinkingConfig": {"include_thoughts": GEMINI_INCLUDE_THOUGHTS,
+                                   "thinking_level": GEMINI_THINKING_LEVEL},
+            },
+        },
+        "headers": "x-goog-api-key (never recorded), content-type application/json, google-genai SDK version headers",
+    }
+
+
+def gemini_config(model_code: str, adapter_name: str) -> dict:
+    preprocessing = claude_config(model_code, adapter_name)["preprocessing"]
+    preprocessing = {**preprocessing,
+                     "provenance": "identical v2 pipeline and bytes as M08 and M09 (target size from Anthropic's "
+                                   "limits); checked against their saved records before execution",
+                     "server_resize_guard": f"image part mediaResolution = {GEMINI_MEDIA_RESOLUTION} "
+                                            "(provider-internal encoding; not observable)"}
+    return {
+        "adapter": adapter_name,
+        "model_code": model_code,
+        "model": GEMINI_MODEL,
+        "inference": {
+            "api": f"Gemini Developer API generateContent ({GEMINI_API_VERSION}) via the official google-genai SDK",
+            "effort": GEMINI_THINKING_LEVEL.lower(),
+            "thinking": {"thinking_level": GEMINI_THINKING_LEVEL, "include_thoughts": GEMINI_INCLUDE_THOUGHTS,
+                         "thinking_budget": None},
+            "max_output_tokens": GEMINI_MAX_OUTPUT_TOKENS,
+            "candidate_count": 1,
+            "streaming": False,
+            "structured_output": "responseMimeType application/json + responseJsonSchema (the frozen OUTPUT_SCHEMA, "
+                                 "passed unchanged)",
+            "media_resolution": {"scope": "image part (per-part; ultra_high is not available globally)",
+                                 "level": GEMINI_MEDIA_RESOLUTION},
+            "image_mime_type": GEMINI_IMAGE_MIME,
+            "content_order": "image part, then prompt text part, one user turn (as M08/M09)",
+            "system_instruction": "none",
+            "tools": "none (no function calling, Google Search grounding, code execution or URL context)",
+            "conversation_state": "none (stateless generateContent; no chat history, no cached_content)",
+            "implicit_caching": "provider default (cannot be disabled); cache hits recorded from usage",
+            "service_tier": "unset (SDK default: standard)",
+            "safety_settings": "provider defaults",
+            "sampling": "provider defaults (temperature, top_p, top_k, seed not set)",
+            "sdk_retries": "disabled (HttpRetryOptions attempts=1); retries are logged by the adapter",
+            "timeout_s": GEMINI_TIMEOUT_S,
+        },
+        "prompt_template_sha256": _sha256_text(bg.PROMPT_TEMPLATE),
+        "output_schema_sha256": _sha256_text(json.dumps(bg.OUTPUT_SCHEMA, sort_keys=True)),
+        "coordinates": "normalized 0-1000 [x_min, y_min, x_max, y_max], origin top-left",
+        "preprocessing": preprocessing,
+    }
+
+
+def _gemini_usage(meta) -> tuple:
+    """Normalise usageMetadata. Returns (usage, complete). Missing fields are recorded as missing, never invented.
+
+    promptTokenCount includes implicit-cache hits (cachedContentTokenCount). Billed output = candidates +
+    thoughts; if either is missing but totalTokenCount is present, output = total - prompt - tool-use prompt."""
+    if meta is None:
+        return {"usage_reported": False}, False
+    u = meta.model_dump(mode="json", exclude_none=True) if hasattr(meta, "model_dump") else dict(meta)
+    prompt, cand = u.get("prompt_token_count"), u.get("candidates_token_count")
+    thoughts, total = u.get("thoughts_token_count"), u.get("total_token_count")
+    tool = u.get("tool_use_prompt_token_count") or 0
+    by_modality = {d.get("modality"): d.get("token_count") for d in u.get("prompt_tokens_details") or []}
+    out = {"usage_reported": True, "raw_usage_metadata": u,
+           "input_tokens": prompt, "cached_input_tokens": u.get("cached_content_token_count") or 0,
+           "candidates_tokens": cand, "thoughts_tokens": thoughts, "reasoning_tokens": thoughts,
+           "tool_use_prompt_tokens": tool, "total_tokens": total,
+           "image_input_tokens": by_modality.get("IMAGE"), "text_input_tokens": by_modality.get("TEXT")}
+    if cand is not None and thoughts is not None:
+        out["output_tokens"], out["output_tokens_basis"] = cand + thoughts, "candidates + thoughts"
+    elif total is not None and prompt is not None:
+        out["output_tokens"], out["output_tokens_basis"] = total - prompt - tool, "total - prompt - tool_use_prompt"
+    elif cand is not None and thoughts is None:
+        out["output_tokens"], out["output_tokens_basis"] = None, "thoughts_token_count missing; cannot price thinking"
+    complete = prompt is not None and out.get("output_tokens") is not None
+    return out, complete
+
+
+class _GeminiBehaviour:
+    """Pieces shared by the real M10 adapter and its mock (config, pricing, image accounting)."""
+
+    model_code = "M10"
+    pricing = GEMINI_3_1_PRO_PREVIEW_PRICING
+    # M10 must submit exactly the bytes and prompt M08/M09 received; the runner checks their saved records.
+    input_reference_models = ("M08", "M09")
+
+    def max_output_tokens(self) -> int:
+        return GEMINI_MAX_OUTPUT_TOKENS
+
+    def image_tokens(self, width: int, height: int) -> int:
+        # Gemini 3 bills a fixed per-image budget per media-resolution level, not by pixel count.
+        return GEMINI_IMAGE_TOKENS[GEMINI_MEDIA_RESOLUTION]
+
+    def image_meta(self, upload: dict) -> dict:
+        return {
+            "api_media_resolution": GEMINI_MEDIA_RESOLUTION,
+            "api_media_resolution_scope": "image part",
+            "api_mime_type": GEMINI_IMAGE_MIME,
+            # Google does not report the pixel size it processes; only the image token count is observable.
+            "api_internal_size_observable": False,
+            "api_documented_image_tokens": GEMINI_IMAGE_TOKENS[GEMINI_MEDIA_RESOLUTION],
+        }
+
+    def request_record(self, jpeg_bytes: bytes, prompt: str) -> dict:
+        return gemini_request_record(jpeg_bytes, prompt)
+
+    def describe(self, cfg: dict) -> str:
+        inf = cfg["inference"]
+        return (f"{cfg['adapter']}: {cfg['model']}, thinking_level={inf['thinking']['thinking_level']}, "
+                f"max_output_tokens={inf['max_output_tokens']}, media_resolution={inf['media_resolution']['level']} "
+                f"(image part), preprocessing v{cfg['preprocessing']['version']}")
+
+    def cost_usd(self, usage: dict) -> float:
+        p = self.pricing
+        inp = usage.get("input_tokens") or 0
+        cached = min(usage.get("cached_input_tokens") or 0, inp)
+        out = usage.get("output_tokens") or 0
+        long = inp > p["long_context_threshold_input_tokens"]
+        rate_in = p["long_context_input_per_mtok"] if long else p["input_per_mtok"]
+        rate_cached = p["long_context_cached_input_per_mtok"] if long else p["cached_input_per_mtok"]
+        rate_out = p["long_context_output_per_mtok"] if long else p["output_per_mtok"]
+        tool = usage.get("tool_use_prompt_tokens") or 0
+        return ((inp - cached + tool) * rate_in + cached * rate_cached + out * rate_out) / 1_000_000
+
+
+class GeminiAdapter(_GeminiBehaviour, ModelAdapter):
+    """M10: Gemini 3.1 Pro Preview through generateContent (google-genai), one independent request per call."""
+
+    adapter_name = "google-genai-generate-content"
+    billing_account = "gemini_api"
+
+    MAX_RETRIES = 4
+    BACKOFF_BASE_S = 5.0
+    BACKOFF_MAX_S = 120.0
+    FATAL_STATUS = {400, 401, 403, 404, 413}
+    RETRY_UNBILLED = {429, 503}         # rejected or overloaded before generation
+    POSSIBLY_BILLED = {500, 504}        # failure may have occurred after generation started
+    BLOCK_REASONS = {"SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "LANGUAGE",
+                     "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_RECITATION", "IMAGE_OTHER"}
+
+    def __init__(self, client=None, sleep=time.sleep, transport=None, api_key=None):
+        """client: a prepared genai.Client (tests). transport: an httpx transport used under the real SDK
+        (tests use httpx.MockTransport, so nothing leaves the machine). api_key: tests only."""
+        self._client = client
+        self._sleep = sleep
+        self._transport = transport
+        self._api_key = api_key
+        self._halt = None
+        self._last_http = None
+
+    def config(self) -> dict:
+        return gemini_config(self.model_code, self.adapter_name)
+
+    def software(self) -> dict:
+        import httpx
+        from google import genai
+        return {**super().software(), "google-genai": genai.__version__, "httpx": httpx.__version__}
+
+    def _capture(self, response) -> None:
+        """httpx response hook: keep the exact response body (the SDK object keeps only parsed fields)."""
+        response.read()
+        try:
+            body = response.json()
+            text = json.dumps(body)
+            redacted = redact_secrets(text)
+            if redacted != text:            # e.g. an error message echoing a key: store the redacted form
+                try:
+                    body = json.loads(redacted)
+                except ValueError:
+                    body = {"redacted_body": redacted}
+        except ValueError:
+            body = {"non_json_body": redact_secrets(response.text[:5000])}
+        keep = ("content-type", "date", "server-timing", "x-goog-request-id", "x-request-id")
+        self._last_http = {"status_code": response.status_code,
+                           "headers": {k: v for k, v in response.headers.items() if k.lower() in keep},
+                           "body": body}
+
+    def prepare(self) -> None:
+        if self._client is not None:
+            return
+        import os
+
+        import httpx
+        from google import genai
+        from google.genai import types
+
+        key = self._api_key
+        if key is None:
+            bg.load_env()
+            key = os.environ.get("GEMINI_API_KEY")
+        if not key:
+            raise FatalAdapterError("GEMINI_API_KEY is not set (expected in .env).")
+        http = httpx.Client(transport=self._transport, timeout=httpx.Timeout(GEMINI_TIMEOUT_S, connect=60.0),
+                            event_hooks={"response": [self._capture]})
+        # Explicit key, base URL and Developer-API mode, so GOOGLE_API_KEY, GOOGLE_GEMINI_BASE_URL or
+        # GOOGLE_GENAI_USE_VERTEXAI in the environment cannot redirect the request or change credentials.
+        self._client = genai.Client(
+            api_key=key, vertexai=False,
+            http_options=types.HttpOptions(base_url=GEMINI_BASE_URL, api_version=GEMINI_API_VERSION,
+                                           timeout=int(GEMINI_TIMEOUT_S * 1000),
+                                           retry_options=types.HttpRetryOptions(attempts=1), httpx_client=http))
+
+    @staticmethod
+    def build_request(jpeg_bytes: bytes, prompt: str) -> dict:
+        from google.genai import types
+        return {
+            "model": GEMINI_MODEL,
+            "contents": [types.Content(role="user", parts=[
+                types.Part(inline_data=types.Blob(data=jpeg_bytes, mime_type=GEMINI_IMAGE_MIME),
+                           media_resolution=types.PartMediaResolution(
+                               level=types.PartMediaResolutionLevel(GEMINI_MEDIA_RESOLUTION))),
+                types.Part(text=prompt)])],
+            "config": types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel(GEMINI_THINKING_LEVEL),
+                                                     include_thoughts=GEMINI_INCLUDE_THOUGHTS),
+                response_mime_type="application/json",
+                response_json_schema=bg.OUTPUT_SCHEMA,
+                max_output_tokens=GEMINI_MAX_OUTPUT_TOKENS,
+                candidate_count=1),
+        }
+
+    def _backoff(self, n: int, exc) -> float:
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", None) or {}
+        retry_after = headers.get("retry-after") if hasattr(headers, "get") else None
+        if retry_after:
+            try:
+                return min(float(retry_after), 300.0)
+            except ValueError:
+                pass
+        return min(self.BACKOFF_BASE_S * 2 ** n, self.BACKOFF_MAX_S) + random.uniform(0, 1)
+
+    def _raw(self, response) -> dict:
+        parsed = response.model_dump(mode="json", exclude_none=True)
+        parsed.pop("sdk_http_response", None)
+        return {"http": self._last_http, "sdk_parsed": parsed}
+
+    def _result(self, response, retries) -> AdapterResult:
+        raw = self._raw(response)
+        usage, complete = _gemini_usage(response.usage_metadata)
+        served = response.model_version or ""
+        cands = response.candidates or []
+        cand = cands[0] if cands else None
+        finish = getattr(getattr(cand, "finish_reason", None), "value", None) or (
+            str(cand.finish_reason) if cand is not None and cand.finish_reason is not None else None)
+        feedback = response.prompt_feedback
+        block = getattr(getattr(feedback, "block_reason", None), "value", None) if feedback else None
+        image_tokens = usage.get("image_input_tokens")
+        provider = {"response_id": response.response_id, "model_version": served or None,
+                    "finish_reason": finish, "block_reason": block, "candidates": len(cands),
+                    "requested_media_resolution": GEMINI_MEDIA_RESOLUTION,
+                    "reported_image_tokens": image_tokens,
+                    "media_resolution_check": ("not verifiable: image token count not reported" if image_tokens is None
+                                               else "consistent with ULTRA_HIGH" if image_tokens > GEMINI_FALLBACK_IMAGE_TOKENS
+                                               else "LOWER THAN REQUESTED"),
+                    "thinking_level_requested": GEMINI_THINKING_LEVEL,
+                    "thoughts_tokens": usage.get("thoughts_tokens"),
+                    "cached_input_tokens": usage.get("cached_input_tokens"),
+                    "usage_complete": complete}
+        common = dict(raw=raw, usage=usage, request_id=response.response_id, retries=retries,
+                      provider_response=provider, usage_complete=complete)
+
+        problems = []
+        if served and not served.startswith(GEMINI_MODEL):
+            problems.append(f"served model {served!r} is not {GEMINI_MODEL}")
+        if image_tokens is not None and image_tokens <= GEMINI_FALLBACK_IMAGE_TOKENS:
+            problems.append(f"reported image tokens {image_tokens} <= {GEMINI_FALLBACK_IMAGE_TOKENS} (HIGH budget): "
+                            f"{GEMINI_MEDIA_RESOLUTION} was not applied")
+        if problems:
+            self._halt = "; ".join(problems)
+            return AdapterResult(status="error", error=f"experiment condition not honoured: {self._halt}",
+                                 possibly_billed=True, **common)
+
+        if block:
+            return AdapterResult(status="ok", text="", stop_reason="refusal", stop_detail=f"prompt blocked: {block}",
+                                 **common)
+        if cand is None:
+            return AdapterResult(status="error", error="response contained no candidates", possibly_billed=True,
+                                 **common)
+        parts = (cand.content.parts if cand.content and cand.content.parts else []) or []
+        text = "".join(p.text for p in parts if p.text and not p.thought)
+        if finish == "STOP":
+            return AdapterResult(status="ok", text=text, stop_reason="completed", **common)
+        if finish == "MAX_TOKENS":
+            return AdapterResult(status="ok", text=text, stop_reason="max_tokens", stop_detail=finish, **common)
+        if finish in self.BLOCK_REASONS:
+            return AdapterResult(status="ok", text="", stop_reason="refusal", stop_detail=finish, **common)
+        return AdapterResult(status="error", error=f"response finished with {finish}", stop_detail=finish,
+                             possibly_billed=True, **common)
+
+    def run(self, jpeg_bytes: bytes, prompt: str, context: dict) -> AdapterResult:
+        import httpx
+        from google.genai import errors
+
+        if self._halt:
+            raise FatalAdapterError(f"stopped: {self._halt}")
+        self.prepare()
+        params = self.build_request(jpeg_bytes, prompt)
+        retries = []
+        for n in range(self.MAX_RETRIES + 1):
+            self._last_http = None
+            billed = False
+            try:
+                response = self._client.models.generate_content(**params)
+            except errors.APIError as e:
+                error = redact_secrets(f"{type(e).__name__} ({e.code} {e.status}): {e.message}")
+                if e.code in self.FATAL_STATUS:
+                    raise FatalAdapterError(error) from None
+                retryable = e.code in self.RETRY_UNBILLED
+                billed = e.code in self.POSSIBLY_BILLED or not retryable
+                exc = e
+            except (httpx.ConnectError, httpx.ConnectTimeout) as e:     # request never reached the server
+                retryable, error, exc = True, redact_secrets(f"{type(e).__name__}: {e}"), e
+            except httpx.HTTPError as e:                                # sent; may have been processed
+                retryable, billed, error, exc = False, True, redact_secrets(f"{type(e).__name__}: {e}"), e
+            except (ValueError, TypeError) as e:
+                error = redact_secrets(f"{type(e).__name__}: {e}")
+                if self._last_http is None:          # rejected by the SDK before sending: a configuration fault
+                    raise FatalAdapterError(f"request could not be sent: {error}") from None
+                return AdapterResult(status="error", error=f"unparseable response: {error}", possibly_billed=True,
+                                     retries=retries, raw={"http": self._last_http})
+            else:
+                return self._result(response, retries)
+
+            raw = {"http": self._last_http} if self._last_http else None
+            if billed or not retryable or n == self.MAX_RETRIES:
+                return AdapterResult(status="error", error=error, possibly_billed=billed, retries=retries, raw=raw)
+            wait = self._backoff(n, exc)
+            retries.append({"retry": n + 1, "error": error, "wait_s": round(wait, 1)})
+            self._sleep(wait)
+
+
 class MockAdapter(ModelAdapter):
     """Offline stand-in with Claude's config and pricing. Never touches the network.
 
@@ -667,11 +1063,22 @@ class MockOpenAIAdapter(_OpenAIBehaviour, MockAdapter):
         return openai_config(self.model_code, self.adapter_name)
 
 
+class MockGeminiAdapter(_GeminiBehaviour, MockAdapter):
+    """Offline stand-in with the M10 config, pricing and image accounting. Never touches the network."""
+
+    adapter_name = "mock"
+
+    def config(self) -> dict:
+        return gemini_config(self.model_code, self.adapter_name)
+
+
 def get_adapter(model_code: str, mock: bool = False, **kwargs) -> ModelAdapter:
     if model_code == "M08":
         return MockAdapter(**kwargs) if mock else ClaudeAdapter(**kwargs)
     if model_code == "M09":
         return MockOpenAIAdapter(**kwargs) if mock else OpenAIAdapter(**kwargs)
+    if model_code == "M10":
+        return MockGeminiAdapter(**kwargs) if mock else GeminiAdapter(**kwargs)
     if model_code in PLANNED_ADAPTERS:
         raise NotImplementedError(f"{model_code}: {PLANNED_ADAPTERS[model_code]}")
     raise ValueError(f"Unknown model code {model_code!r}")
