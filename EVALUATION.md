@@ -288,6 +288,26 @@ saved outputs into these objects. Pixel boxes need no conversion; normalized box
 with that model's scale. Metrics, persistence, figures and review then work unchanged. Comparing two models on
 the **same** image uses the same `compare_sets` call. Comparing across images is refused (next section).
 
+**M10 Gemini (prepared; no results yet).** M10 trials are written by `benchmark_runner.py` in exactly the M08/M09
+record format (0–1000 boxes, 10 independent trials per image), so the existing loader reads them with no change.
+After the live run, `python evaluate_consistency.py --output-dir evaluation_results_lowalt_v1_m10` evaluates all
+five configurations on each pilot image. That covers M01, M02 v2, M08, M09 and M10:
+* counts, plus mean/SD/CV for the stochastic models only;
+* within-model agreement and persistence for M08/M09/M10 (not applicable to the single DeepForest outputs);
+* between-model agreement for all 10 configuration pairs at 0.50/0.75/1.00:
+  * LLM vs LLM: 10 × 10 trial pairs;
+  * DeepForest vs LLM: 1 × 10;
+  * M01 vs M02 v2: 1 × 1;
+* geometry, coverage and overlap;
+* on PT-R1 only, accuracy and per-reference-tree detection frequency against the 11-tree reference (including H04).
+
+PT-02 gets no accuracy.
+
+The plotting code was prepared for five configurations: a six-colour palette (the first four colours unchanged, so
+existing figures are unaffected), figure L in a three-column grid when there are more than four configurations, and
+a wrapped K title. A five-configuration synthetic run is part of the tests. Use a new output folder so the M08/M09
+(`evaluation_results/`) and DeepForest (`evaluation_results_lowalt_v1_deepforest/`) evaluations stay as they are.
+
 ## Across-altitude robustness: design (not yet run)
 
 The October 24 series has five PT-02 images (64–86 m) and five PT-R1 images (27–31 m). So far only
