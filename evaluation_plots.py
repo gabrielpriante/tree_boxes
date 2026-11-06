@@ -664,7 +664,7 @@ def error_cases(u, acc, t, full, path):
 
 # ------------------------------------------------------------------ comparison between model configurations (same image)
 
-MODEL_COLORS = ["#4c72b0", "#dd8452", "#55a868", "#c44e52"]
+MODEL_COLORS = ["#4c72b0", "#dd8452", "#55a868", "#c44e52", "#8172b3", "#937860"]  # first four unchanged
 COMPARISON_NOTE = ("Same image, same preprocessed bytes and prompt for every model. Spread between trials is run-to-run "
                    "variation on ONE image, not independent-image performance. Reasoning-effort settings are not "
                    "computationally equivalent across providers.")
@@ -707,7 +707,7 @@ def model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_r
     log_scale = min(all_counts) > 0 and max(all_counts) / min(all_counts) > 20
     for i, u in enumerate(units):
         counts, s = u.counts, stats[u.key]
-        a1.scatter(i + rng.uniform(-0.12, 0.12, len(counts)), counts, s=28, color=MODEL_COLORS[i % 4], zorder=3)
+        a1.scatter(i + rng.uniform(-0.12, 0.12, len(counts)), counts, s=28, color=MODEL_COLORS[i % len(MODEL_COLORS)], zorder=3)
         if u.single_output:
             a1.text(i + 0.18, s["mean"], f" {s['mean']:.0f}\n single output", fontsize=8, va="center")
             continue
@@ -733,7 +733,7 @@ def model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_r
         for i, u in enumerate(units):
             means = [results[u.key][t].summary["agreement_mean"] or 0 for t in thresholds]
             sds = [results[u.key][t].summary["agreement_sd"] or 0 for t in thresholds]
-            a2.bar(x + (i - len(units) / 2) * width, means, width, yerr=sds, capsize=3, color=MODEL_COLORS[i % 4],
+            a2.bar(x + (i - len(units) / 2) * width, means, width, yerr=sds, capsize=3, color=MODEL_COLORS[i % len(MODEL_COLORS)],
                    label=f"within {u.model}")
         between = [next((r["agreement_mean"] for r in cross_rows if r["iou_threshold"] == ec.threshold_label(t)), 0) or 0
                    for t in thresholds]
@@ -748,12 +748,12 @@ def model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_r
             xs = x + (i - (len(units) - 1) / 2) * width
             if u.single_output:
                 for xi in xs:
-                    a2.text(xi, 0.02, "n/a", ha="center", va="bottom", fontsize=7, color=MODEL_COLORS[i % 4])
-                a2.bar(xs, [0] * len(xs), width, color=MODEL_COLORS[i % 4], label=f"{u.model}: n/a (single output)")
+                    a2.text(xi, 0.02, "n/a", ha="center", va="bottom", fontsize=7, color=MODEL_COLORS[i % len(MODEL_COLORS)])
+                a2.bar(xs, [0] * len(xs), width, color=MODEL_COLORS[i % len(MODEL_COLORS)], label=f"{u.model}: n/a (single output)")
                 continue
             means = [results[u.key][t].summary["agreement_mean"] or 0 for t in thresholds]
             sds = [results[u.key][t].summary["agreement_sd"] or 0 for t in thresholds]
-            a2.bar(xs, means, width, yerr=sds, capsize=3, color=MODEL_COLORS[i % 4], label=f"within {u.model}")
+            a2.bar(xs, means, width, yerr=sds, capsize=3, color=MODEL_COLORS[i % len(MODEL_COLORS)], label=f"within {u.model}")
         a2.set_title("Within-model spatial agreement (between models: figure M)", fontsize=10)
     a2.set_xticks(x, labels)
     a2.set_ylim(0, 1.12)
@@ -770,7 +770,7 @@ def model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_r
             vals = [[a[m] for a in acc.per_trial[t].values() if a[m] is not None] for t, m in groups]
             means = [np.mean(v) if v else 0 for v in vals]
             sds = [np.std(v, ddof=1) if len(v) > 1 else 0 for v in vals]
-            a3.bar(xg + (i - (len(units) - 1) / 2) * w, means, w, yerr=sds, capsize=3, color=MODEL_COLORS[i % 4],
+            a3.bar(xg + (i - (len(units) - 1) / 2) * w, means, w, yerr=sds, capsize=3, color=MODEL_COLORS[i % len(MODEL_COLORS)],
                    label=f"{u.model} ({_outputs(u)})")
             for xi, m in zip(xg + (i - (len(units) - 1) / 2) * w, means):
                 a3.text(xi, m + 0.03, f"{m:.2f}", ha="center", fontsize=6 if len(units) > 2 else 7)
@@ -784,7 +784,7 @@ def model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_r
         for i, u in enumerate(units):
             acc = acc_by_key[u.key]
             found, n = _ref_found(acc, thresholds[0]), _n_trials(acc)
-            a4.bar(xr + (i - (len(units) - 1) / 2) * w, [found[r] / n for r in refs], w, color=MODEL_COLORS[i % 4],
+            a4.bar(xr + (i - (len(units) - 1) / 2) * w, [found[r] / n for r in refs], w, color=MODEL_COLORS[i % len(MODEL_COLORS)],
                    label=f"{u.model} (of {n})")
         a4.set_xticks(xr, refs)
         a4.set_ylim(0, 1.15)
@@ -799,8 +799,14 @@ def model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_r
         a3.text(0.5, 0.5, "No COMPLETE human reference for this image:\naccuracy is not computed "
                           "(consistency and between-model agreement only).", ha="center", va="center",
                 transform=a3.transAxes, fontsize=11)
-    fig.suptitle(f"K. Model comparison on {image_id} ({units[0].site}) · "
-                 + " vs ".join(f"{u.model} ({_outputs(u)})" for u in units), fontsize=11 if len(units) > 2 else 12)
+    models = [f"{u.model} ({_outputs(u)})" for u in units]
+    if len(units) <= 4:
+        title = f"K. Model comparison on {image_id} ({units[0].site}) · " + " vs ".join(models)
+    else:   # five or more configurations: wrap the model list
+        half = -(-len(models) // 2)
+        title = (f"K. Model comparison on {image_id} ({units[0].site})\n" + " · ".join(models[:half])
+                 + "\n" + " · ".join(models[half:]))
+    fig.suptitle(title, fontsize=11 if len(units) > 2 else 12)
     return finish(fig, path, _comparison_note(units))
 
 
@@ -853,7 +859,7 @@ def agreement_matrices(image_id, units, results, cross_rows, path):
                  "Off-diagonal: every output of one model vs every output of the other (mean ± SD over pairs). "
                  "Diagonal: within-model repeatability.", fontsize=11)
     return finish(fig, path, "Agreement is not accuracy. A DeepForest output is compared with each LLM trial "
-                             "separately (10 pairs); it is never replicated. " + _comparison_note(units))
+                             "separately (one pair per trial); it is never replicated. " + _comparison_note(units))
 
 
 def geometry_comparison(image_id, units, rows, path):
@@ -878,12 +884,12 @@ def geometry_comparison(image_id, units, rows, path):
             rs = [r for r in rows if r["experiment_id"] == u.experiment_id]
             vals = [r[key] for r in rs if r[key] is not None]
             any_positive |= any(v > 0 for v in vals)
-            ax.scatter(i + rng.uniform(-0.12, 0.12, len(vals)), vals, s=30, color=MODEL_COLORS[i % 4], zorder=3)
+            ax.scatter(i + rng.uniform(-0.12, 0.12, len(vals)), vals, s=30, color=MODEL_COLORS[i % len(MODEL_COLORS)], zorder=3)
             if key.startswith("box_side_"):
                 lo = [r[f"box_side_{unit}_p10"] for r in rs if r[f"box_side_{unit}_p10"] is not None]
                 hi = [r[f"box_side_{unit}_p90"] for r in rs if r[f"box_side_{unit}_p90"] is not None]
                 if lo and hi:
-                    ax.vlines(i + 0.25, np.mean(lo), np.mean(hi), color=MODEL_COLORS[i % 4], lw=3, alpha=0.6)
+                    ax.vlines(i + 0.25, np.mean(lo), np.mean(hi), color=MODEL_COLORS[i % len(MODEL_COLORS)], lw=3, alpha=0.6)
             if vals:
                 ax.text(i + 0.3, np.mean(vals), f" {np.mean(vals):.3g}", fontsize=8, va="center")
         ax.set_xticks(range(len(units)), [_model_label(u) for u in units], fontsize=8)
@@ -926,10 +932,18 @@ def models_side_by_side(image_id, units, acc_by_key, full, path, t=ec.THRESHOLDS
     lab = ec.threshold_label(t)
     scale = PLOT_WIDTH / full.width
     thumb = np.asarray(full.resize((PLOT_WIDTH, round(full.height * scale)), Image.LANCZOS))
-    fig, axes = plt.subplots(1, len(units), figsize=(8 * len(units), 6.9), squeeze=False)
-    fig.subplots_adjust(top=0.86, bottom=0.14, left=0.01, right=0.99, wspace=0.03)
+    if len(units) <= 4:   # one row, as before
+        fig, axes = plt.subplots(1, len(units), figsize=(8 * len(units), 6.9), squeeze=False)
+        fig.subplots_adjust(top=0.86, bottom=0.14, left=0.01, right=0.99, wspace=0.03)
+    else:                 # five or more configurations: a grid of three columns
+        nrows = -(-len(units) // 3)
+        fig, axes = plt.subplots(nrows, 3, figsize=(24, 6.4 * nrows + 1.2), squeeze=False)
+        fig.subplots_adjust(top=1 - 0.9 / (6.4 * nrows + 1.2), bottom=0.9 / (6.4 * nrows + 1.2), left=0.01,
+                            right=0.99, wspace=0.03, hspace=0.12)
+        for ax in axes.flat[len(units):]:
+            ax.set_axis_off()
     any_acc = False
-    for ax, u in zip(axes[0], units):
+    for ax, u in zip(axes.flat, units):
         ax.imshow(thumb)
         ax.set_axis_off()
         acc = acc_by_key.get(u.key)
