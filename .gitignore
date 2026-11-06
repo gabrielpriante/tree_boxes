@@ -15,6 +15,9 @@ venv/
 *.tmp
 *.log
 
+# PyTorch Lightning runtime logs written by DeepForest predict calls (config dumps only; not results)
+lightning_logs/
+
 # Offline mock runs (never real results)
 benchmark_results_mock/
 
@@ -28,3 +31,5 @@ desktop.ini
 # were made from) stay tracked; only new ones are kept local.
 evaluation_results/review/crops/
 evaluation_results/review/contact_sheet_*.png
+evaluation_results_*/review/crops/
+evaluation_results_*/review/contact_sheet_*.png

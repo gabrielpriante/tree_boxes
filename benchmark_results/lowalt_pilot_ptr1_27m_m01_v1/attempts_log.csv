@@ -1,0 +1,2 @@
+experiment_id,model_config_id,image_id,trial,attempt,status,stop_reason,tree_count,raw_box_count,input_tokens,output_tokens,estimated_cost_usd,cost_basis,possibly_billed,api_retries,error,started_utc,finished_utc,record_path
+lowalt_pilot_ptr1_27m_m01_v1,M01_9c192941f5,LA_PT-R1_27m,1,1,success,completed,4836,4836,,,0.0,local inference,False,0,,2026-11-05T23:38:12+00:00,2026-11-05T23:38:42+00:00,M01_9c192941f5/LA_PT-R1_27m/trial_01/attempt_01/record.json

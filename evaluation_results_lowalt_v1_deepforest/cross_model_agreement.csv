@@ -1,0 +1,37 @@
+image_id,model_config_a,model_a,experiment_a,model_config_b,model_b,experiment_b,iou_threshold,trial_pairs,agreement_mean,agreement_sd,agreement_min,agreement_max,matched_iou_mean
+LA_PT-02_64m,M01_9c192941f5,DeepForest M01,lowalt_pilot_pt02_64m_m01_v1,M02v2_1e05a4037f,DeepForest M02v2,lowalt_pilot_pt02_64m_m02_v2,0.50,1,0.000308,,0.000308,0.000308,0.505775
+LA_PT-02_64m,M01_9c192941f5,DeepForest M01,lowalt_pilot_pt02_64m_m01_v1,M02v2_1e05a4037f,DeepForest M02v2,lowalt_pilot_pt02_64m_m02_v2,0.75,1,0,,0,0,
+LA_PT-02_64m,M01_9c192941f5,DeepForest M01,lowalt_pilot_pt02_64m_m01_v1,M02v2_1e05a4037f,DeepForest M02v2,lowalt_pilot_pt02_64m_m02_v2,1.00,1,0,,0,0,
+LA_PT-02_64m,M01_9c192941f5,DeepForest M01,lowalt_pilot_pt02_64m_m01_v1,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_pt02_64m_v1,0.50,10,0,0,0,0,
+LA_PT-02_64m,M01_9c192941f5,DeepForest M01,lowalt_pilot_pt02_64m_m01_v1,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_pt02_64m_v1,0.75,10,0,0,0,0,
+LA_PT-02_64m,M01_9c192941f5,DeepForest M01,lowalt_pilot_pt02_64m_m01_v1,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_pt02_64m_v1,1.00,10,0,0,0,0,
+LA_PT-02_64m,M01_9c192941f5,DeepForest M01,lowalt_pilot_pt02_64m_m01_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_pt02_64m_m09_v1,0.50,10,0,0,0,0,
+LA_PT-02_64m,M01_9c192941f5,DeepForest M01,lowalt_pilot_pt02_64m_m01_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_pt02_64m_m09_v1,0.75,10,0,0,0,0,
+LA_PT-02_64m,M01_9c192941f5,DeepForest M01,lowalt_pilot_pt02_64m_m01_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_pt02_64m_m09_v1,1.00,10,0,0,0,0,
+LA_PT-02_64m,M02v2_1e05a4037f,DeepForest M02v2,lowalt_pilot_pt02_64m_m02_v2,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_pt02_64m_v1,0.50,10,0.068432,0.002911,0.066351,0.076555,0.668083
+LA_PT-02_64m,M02v2_1e05a4037f,DeepForest M02v2,lowalt_pilot_pt02_64m_m02_v2,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_pt02_64m_v1,0.75,10,0.008677,0.007085,0,0.019231,0.78311
+LA_PT-02_64m,M02v2_1e05a4037f,DeepForest M02v2,lowalt_pilot_pt02_64m_m02_v2,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_pt02_64m_v1,1.00,10,0,0,0,0,
+LA_PT-02_64m,M02v2_1e05a4037f,DeepForest M02v2,lowalt_pilot_pt02_64m_m02_v2,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_pt02_64m_m09_v1,0.50,10,0.034642,0.011252,0.018018,0.052863,0.571319
+LA_PT-02_64m,M02v2_1e05a4037f,DeepForest M02v2,lowalt_pilot_pt02_64m_m02_v2,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_pt02_64m_m09_v1,0.75,10,0.000901,0.002849,0,0.009009,0.751542
+LA_PT-02_64m,M02v2_1e05a4037f,DeepForest M02v2,lowalt_pilot_pt02_64m_m02_v2,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_pt02_64m_m09_v1,1.00,10,0,0,0,0,
+LA_PT-02_64m,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_pt02_64m_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_pt02_64m_m09_v1,0.50,100,0.627062,0.048582,0.5,0.738462,0.688775
+LA_PT-02_64m,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_pt02_64m_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_pt02_64m_m09_v1,0.75,100,0.198284,0.064567,0.088235,0.41791,0.81441
+LA_PT-02_64m,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_pt02_64m_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_pt02_64m_m09_v1,1.00,100,0,0,0,0,
+LA_PT-R1_27m,M01_9c192941f5,DeepForest M01,lowalt_pilot_ptr1_27m_m01_v1,M02v2_b25eccbcc7,DeepForest M02v2,lowalt_pilot_ptr1_27m_m02_v2,0.50,1,0,,0,0,
+LA_PT-R1_27m,M01_9c192941f5,DeepForest M01,lowalt_pilot_ptr1_27m_m01_v1,M02v2_b25eccbcc7,DeepForest M02v2,lowalt_pilot_ptr1_27m_m02_v2,0.75,1,0,,0,0,
+LA_PT-R1_27m,M01_9c192941f5,DeepForest M01,lowalt_pilot_ptr1_27m_m01_v1,M02v2_b25eccbcc7,DeepForest M02v2,lowalt_pilot_ptr1_27m_m02_v2,1.00,1,0,,0,0,
+LA_PT-R1_27m,M01_9c192941f5,DeepForest M01,lowalt_pilot_ptr1_27m_m01_v1,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,0.50,10,0,0,0,0,
+LA_PT-R1_27m,M01_9c192941f5,DeepForest M01,lowalt_pilot_ptr1_27m_m01_v1,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,0.75,10,0,0,0,0,
+LA_PT-R1_27m,M01_9c192941f5,DeepForest M01,lowalt_pilot_ptr1_27m_m01_v1,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,1.00,10,0,0,0,0,
+LA_PT-R1_27m,M01_9c192941f5,DeepForest M01,lowalt_pilot_ptr1_27m_m01_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,0.50,10,0,0,0,0,
+LA_PT-R1_27m,M01_9c192941f5,DeepForest M01,lowalt_pilot_ptr1_27m_m01_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,0.75,10,0,0,0,0,
+LA_PT-R1_27m,M01_9c192941f5,DeepForest M01,lowalt_pilot_ptr1_27m_m01_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,1.00,10,0,0,0,0,
+LA_PT-R1_27m,M02v2_b25eccbcc7,DeepForest M02v2,lowalt_pilot_ptr1_27m_m02_v2,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,0.50,10,0.367806,0.048358,0.230769,0.384615,0.759753
+LA_PT-R1_27m,M02v2_b25eccbcc7,DeepForest M02v2,lowalt_pilot_ptr1_27m_m02_v2,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,0.75,10,0.268376,0.098049,0,0.307692,0.804511
+LA_PT-R1_27m,M02v2_b25eccbcc7,DeepForest M02v2,lowalt_pilot_ptr1_27m_m02_v2,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,1.00,10,0,0,0,0,
+LA_PT-R1_27m,M02v2_b25eccbcc7,DeepForest M02v2,lowalt_pilot_ptr1_27m_m02_v2,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,0.50,10,0.326872,0.031561,0.307692,0.384615,0.759964
+LA_PT-R1_27m,M02v2_b25eccbcc7,DeepForest M02v2,lowalt_pilot_ptr1_27m_m02_v2,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,0.75,10,0.155744,0.004298,0.153846,0.166667,0.837064
+LA_PT-R1_27m,M02v2_b25eccbcc7,DeepForest M02v2,lowalt_pilot_ptr1_27m_m02_v2,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,1.00,10,0,0,0,0,
+LA_PT-R1_27m,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,0.50,100,0.82779,0.158276,0.333333,1,0.811259
+LA_PT-R1_27m,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,0.75,100,0.552476,0.191497,0,1,0.890832
+LA_PT-R1_27m,M08_high_a28fe01ac5,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,M09_high_90be168b98,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,1.00,100,0,0,0,0,

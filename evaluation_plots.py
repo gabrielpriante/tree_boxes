@@ -24,6 +24,7 @@ AGREEMENT_DEF = "Pairwise agreement = 2 × matched boxes / (boxes in trial A + b
 REPEATABILITY_NOTE = "Repeatability between trials only: not precision, recall or accuracy."
 PLOT_WIDTH = 2048
 MAX_TILES = 36
+MAX_FP_TILES = 24
 
 
 def font(size: int):
@@ -44,7 +45,8 @@ def trial_color(trial: int) -> tuple:
 
 
 def header(u) -> str:
-    return f"{u.site} · {u.image_id} · {u.model} ({u.model_config_id}) · {u.n_trials} trials · {u.experiment_id}"
+    runs = "1 deterministic output" if getattr(u, "single_output", False) else f"{u.n_trials} trials"
+    return f"{u.site} · {u.image_id} · {u.model} ({u.model_config_id}) · {runs} · {u.experiment_id}"
 
 
 def finish(fig, path: Path, footnote: str) -> Path:
@@ -547,7 +549,8 @@ def reference_vs_predictions_overview(u, acc, thresholds, full, path):
     handles += [Patch(edgecolor=REF_FOUND_COLOR, facecolor="none", ls="--", label="reference tree, found in every trial"),
                 Patch(edgecolor=MISSED_COLOR, facecolor="none", ls="--", label="reference tree, missed in some trials")]
     fig.legend(handles=handles, loc="lower center", ncol=3, fontsize=8, frameon=False, bbox_to_anchor=(0.5, 0.03))
-    fig.suptitle(f"I. Human reference vs Claude boxes from all {n} trials\n{header(u)}", fontsize=11)
+    src = "its single deterministic output" if n == 1 else f"all {n} trials"
+    fig.suptitle(f"I. Human reference vs {u.model} boxes from {src}\n{header(u)}", fontsize=11)
     return finish(fig, path, "Thin boxes: every trial's predictions, coloured by outcome. Dashed: human reference, "
                              "labelled with the number of trials that found it. " + ACCURACY_NOTE)
 
@@ -560,7 +563,7 @@ def reference_vs_predictions_full(u, acc, t, full, path):
     f = font(max(14, round(min(full.size) / 70)))
     lh = round(ImageDraw.Draw(full).textbbox((0, 0), "Ag", font=f)[3] * 1.5)
     lines = [(f"{u.site} {u.image_id} | {u.model} | {n} trials | IoU >= {lab} | human reference (COMPLETE, "
-              f"{len(acc.reference.detections)} trees) vs Claude boxes from all trials", (255, 255, 255))]
+              f"{len(acc.reference.detections)} trees) vs {u.model} boxes from all trials", (255, 255, 255))]
     lines += [(OUTCOME_LABELS[k] + " (thin)", hex_rgb(c)) for k, c in OUTCOME_COLORS.items()]
     lines += [("reference tree found in every trial (thick; label = trials that found it)", hex_rgb(REF_FOUND_COLOR)),
               ("reference tree missed in some trials (thick)", hex_rgb(MISSED_COLOR))]
@@ -599,6 +602,13 @@ def error_cases(u, acc, t, full, path):
     for r in rows:
         if r["outcome"] == "FP":
             fp_groups.setdefault(r["group_iou050"] or r["detection_uid"], []).append(r)
+    n_fp_locations = len(fp_groups)
+    if n_fp_locations > MAX_FP_TILES:
+        # Thousands of ungrouped boxes (single-output producers): show the FPs nearest to reference trees first.
+        priority = {"reference_matched_by_other_detection": 0, "localization_below_threshold": 1, "no_reference_overlap": 2}
+        keep = sorted(fp_groups, key=lambda k: (min(priority.get(r["fp_type"], 3) for r in fp_groups[k]),
+                                                -max(float(r["best_iou"]) for r in fp_groups[k]), k))[:MAX_FP_TILES]
+        fp_groups = {k: fp_groups[k] for k in keep}
     for g, rs in sorted(fp_groups.items()):
         labels = sorted({r["human_label"] for r in rs if r["human_label"]})
         types = sorted({r["fp_type"].replace("_", " ") for r in rs})
@@ -644,7 +654,9 @@ def error_cases(u, acc, t, full, path):
     handles = [Patch(edgecolor=c, facecolor="none", label=OUTCOME_LABELS[k]) for k, c in OUTCOME_COLORS.items()]
     handles.append(Patch(edgecolor=REF_FOUND_COLOR, facecolor="none", ls="--", label="human reference box"))
     fig.legend(handles=handles, loc="lower center", ncol=3, fontsize=8, frameon=False, bbox_to_anchor=(0.5, 0.3 / height))
-    fig.suptitle(f"J. Error cases at IoU ≥ {lab}: false-positive locations and missed reference trees\n{header(u)}",
+    shown = (f" (showing the {MAX_FP_TILES} FP boxes nearest to reference trees of {n_fp_locations}; all are in "
+             f"prediction_outcomes.csv)" if n_fp_locations > MAX_FP_TILES else "")
+    fig.suptitle(f"J. Error cases at IoU ≥ {lab}: false-positive locations and missed reference trees{shown}\n{header(u)}",
                  fontsize=11)
     return finish(fig, path, "FP tiles group a recurring false positive by its IoU 0.50 consistency group. "
                              "Missed-tree tiles show the reference box and nearby false positives. " + ACCURACY_NOTE)
@@ -663,14 +675,24 @@ def _model_label(u):
 
 
 def comparison_figures(image_id: str, units: list, results: dict, stats: dict, acc_by_key: dict, cross_rows: list,
-                       out: Path) -> list:
+                       out: Path, geometry_rows: list | None = None, coverage_rows: list | None = None) -> list:
     fig_dir = out / "figures" / "comparison" / image_id
     units = sorted(units, key=lambda u: (u.model_config_id, u.experiment_id))
     with Image.open(units[0].image_path) as im:
         full = im.convert("RGB")
-    return [model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_rows,
-                                    fig_dir / "K_model_comparison.png"),
-            models_side_by_side(image_id, units, acc_by_key, full, fig_dir / "L_models_side_by_side_iou050.png")]
+    paths = [model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_rows,
+                                     fig_dir / "K_model_comparison.png"),
+             models_side_by_side(image_id, units, acc_by_key, full, fig_dir / "L_models_side_by_side_iou050.png")]
+    if len(units) > 2 or any(u.single_output for u in units):   # multi-model (e.g. LLM + DeepForest) comparisons
+        paths.append(agreement_matrices(image_id, units, results, cross_rows, fig_dir / "M_agreement_matrices.png"))
+        if geometry_rows:
+            paths.append(geometry_comparison(image_id, units, geometry_rows, fig_dir / "N_geometry_coverage.png"))
+            paths.append(coverage_maps(image_id, units, full, fig_dir / "O_coverage_maps.png"))
+    return paths
+
+
+def _outputs(u) -> str:
+    return "1 deterministic output" if u.single_output else f"{u.n_trials} trials"
 
 
 def model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_rows, path):
@@ -681,37 +703,62 @@ def model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_r
     (a1, a2), (a3, a4) = axes
     rng = np.random.default_rng(0)
 
+    all_counts = [c for u in units for c in u.counts]
+    log_scale = min(all_counts) > 0 and max(all_counts) / min(all_counts) > 20
     for i, u in enumerate(units):
         counts, s = u.counts, stats[u.key]
         a1.scatter(i + rng.uniform(-0.12, 0.12, len(counts)), counts, s=28, color=MODEL_COLORS[i % 4], zorder=3)
+        if u.single_output:
+            a1.text(i + 0.18, s["mean"], f" {s['mean']:.0f}\n single output", fontsize=8, va="center")
+            continue
         a1.errorbar(i + 0.28, s["mean"], yerr=s["sd"] or 0, fmt="o", color="black", capsize=5)
         cv = "–" if s["cv"] is None else f"{s['cv']:.1%}"
         a1.text(i + 0.33, s["mean"], f" mean {s['mean']:.1f}\n SD {s['sd'] or 0:.2f}\n CV {cv}", fontsize=8, va="center")
-    a1.set_xticks(range(len(units)), [_model_label(u) for u in units], fontsize=8)
+    a1.set_xticks(range(len(units)), [_model_label(u) for u in units], fontsize=8 if len(units) <= 2 else 7,
+                  rotation=0 if len(units) <= 2 else 15)
     a1.set_xlim(-0.5, len(units) - 0.1)
-    a1.yaxis.get_major_locator().set_params(integer=True)
-    a1.set_ylabel("boxes per trial")
-    a1.set_title("Count per trial (dots) and mean ± SD", fontsize=10)
+    if log_scale:
+        a1.set_yscale("log")
+        a1.set_ylabel("boxes per output (log scale)")
+    else:
+        a1.yaxis.get_major_locator().set_params(integer=True)
+        a1.set_ylabel("boxes per trial")
+    a1.set_title("Count per trial / output (dots) and mean ± SD", fontsize=10)
 
     labels = [_thr_text(t) for t in thresholds]
     x = np.arange(len(thresholds))
-    width = 0.8 / (len(units) + 1)
-    for i, u in enumerate(units):
-        means = [results[u.key][t].summary["agreement_mean"] or 0 for t in thresholds]
-        sds = [results[u.key][t].summary["agreement_sd"] or 0 for t in thresholds]
-        a2.bar(x + (i - len(units) / 2) * width, means, width, yerr=sds, capsize=3, color=MODEL_COLORS[i % 4],
-               label=f"within {u.model}")
-    between = [next((r["agreement_mean"] for r in cross_rows if r["iou_threshold"] == ec.threshold_label(t)), 0) or 0
-               for t in thresholds]
-    between_sd = [next((r["agreement_sd"] for r in cross_rows if r["iou_threshold"] == ec.threshold_label(t)), 0) or 0
-                  for t in thresholds]
-    a2.bar(x + (len(units) / 2) * width, between, width, yerr=between_sd, capsize=3, color="#bbbbbb", hatch="//",
-           edgecolor="#555", label="between models")
+    pair_only = len(units) == 2 and not any(u.single_output for u in units)
+    if pair_only:   # original two-model layout (unchanged)
+        width = 0.8 / (len(units) + 1)
+        for i, u in enumerate(units):
+            means = [results[u.key][t].summary["agreement_mean"] or 0 for t in thresholds]
+            sds = [results[u.key][t].summary["agreement_sd"] or 0 for t in thresholds]
+            a2.bar(x + (i - len(units) / 2) * width, means, width, yerr=sds, capsize=3, color=MODEL_COLORS[i % 4],
+                   label=f"within {u.model}")
+        between = [next((r["agreement_mean"] for r in cross_rows if r["iou_threshold"] == ec.threshold_label(t)), 0) or 0
+                   for t in thresholds]
+        between_sd = [next((r["agreement_sd"] for r in cross_rows if r["iou_threshold"] == ec.threshold_label(t)), 0) or 0
+                      for t in thresholds]
+        a2.bar(x + (len(units) / 2) * width, between, width, yerr=between_sd, capsize=3, color="#bbbbbb", hatch="//",
+               edgecolor="#555", label="between models")
+        a2.set_title("Spatial agreement: within each model and between models", fontsize=10)
+    else:
+        width = 0.8 / len(units)
+        for i, u in enumerate(units):
+            xs = x + (i - (len(units) - 1) / 2) * width
+            if u.single_output:
+                for xi in xs:
+                    a2.text(xi, 0.02, "n/a", ha="center", va="bottom", fontsize=7, color=MODEL_COLORS[i % 4])
+                a2.bar(xs, [0] * len(xs), width, color=MODEL_COLORS[i % 4], label=f"{u.model}: n/a (single output)")
+                continue
+            means = [results[u.key][t].summary["agreement_mean"] or 0 for t in thresholds]
+            sds = [results[u.key][t].summary["agreement_sd"] or 0 for t in thresholds]
+            a2.bar(xs, means, width, yerr=sds, capsize=3, color=MODEL_COLORS[i % 4], label=f"within {u.model}")
+        a2.set_title("Within-model spatial agreement (between models: figure M)", fontsize=10)
     a2.set_xticks(x, labels)
     a2.set_ylim(0, 1.12)
     a2.set_ylabel("pairwise agreement 2M/(nA+nB)")
-    a2.legend(fontsize=8, loc="upper right")
-    a2.set_title("Spatial agreement: within each model and between models", fontsize=10)
+    a2.legend(fontsize=7, loc="upper right")
 
     if have_acc:
         metrics = ("precision", "recall", "f1")
@@ -724,27 +771,28 @@ def model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_r
             means = [np.mean(v) if v else 0 for v in vals]
             sds = [np.std(v, ddof=1) if len(v) > 1 else 0 for v in vals]
             a3.bar(xg + (i - (len(units) - 1) / 2) * w, means, w, yerr=sds, capsize=3, color=MODEL_COLORS[i % 4],
-                   label=u.model)
+                   label=f"{u.model} ({_outputs(u)})")
             for xi, m in zip(xg + (i - (len(units) - 1) / 2) * w, means):
-                a3.text(xi, m + 0.03, f"{m:.2f}", ha="center", fontsize=7)
+                a3.text(xi, m + 0.03, f"{m:.2f}", ha="center", fontsize=6 if len(units) > 2 else 7)
         a3.set_xticks(xg, [f"{m}\n{_thr_text(t)}" for t, m in groups], fontsize=8)
         a3.set_ylim(0, 1.12)
-        a3.legend(fontsize=8)
+        a3.legend(fontsize=7)
         a3.set_title("Accuracy against the human reference (mean ± SD over trials)", fontsize=10)
 
         refs = [d.label for d in acc_by_key[units[0].key].reference.detections]
         xr = np.arange(len(refs))
         for i, u in enumerate(units):
-            found = _ref_found(acc_by_key[u.key], thresholds[0])
-            a4.bar(xr + (i - (len(units) - 1) / 2) * w, [found[r] for r in refs], w, color=MODEL_COLORS[i % 4],
-                   label=u.model)
-        n = max(_n_trials(acc_by_key[u.key]) for u in units)
+            acc = acc_by_key[u.key]
+            found, n = _ref_found(acc, thresholds[0]), _n_trials(acc)
+            a4.bar(xr + (i - (len(units) - 1) / 2) * w, [found[r] / n for r in refs], w, color=MODEL_COLORS[i % 4],
+                   label=f"{u.model} (of {n})")
         a4.set_xticks(xr, refs)
-        a4.set_ylim(0, n + 1)
-        a4.axhline(n, color="#555", ls=":", lw=1)
-        a4.set_ylabel(f"trials that found the tree (of {n})")
-        a4.legend(fontsize=8)
-        a4.set_title(f"Each human reference tree: trials that found it at {_thr_text(thresholds[0])}", fontsize=10)
+        a4.set_ylim(0, 1.15)
+        a4.axhline(1, color="#555", ls=":", lw=1)
+        a4.set_ylabel("share of trials / outputs that found the tree")
+        a4.legend(fontsize=7)
+        a4.set_title(f"Each human reference tree: share of outputs that found it at {_thr_text(thresholds[0])}",
+                     fontsize=10)
     else:
         for ax in (a3, a4):
             ax.set_axis_off()
@@ -752,8 +800,126 @@ def model_comparison_panels(image_id, units, results, stats, acc_by_key, cross_r
                           "(consistency and between-model agreement only).", ha="center", va="center",
                 transform=a3.transAxes, fontsize=11)
     fig.suptitle(f"K. Model comparison on {image_id} ({units[0].site}) · "
-                 + " vs ".join(f"{u.model} ({u.n_trials} trials)" for u in units), fontsize=12)
-    return finish(fig, path, COMPARISON_NOTE)
+                 + " vs ".join(f"{u.model} ({_outputs(u)})" for u in units), fontsize=11 if len(units) > 2 else 12)
+    return finish(fig, path, _comparison_note(units))
+
+
+def _comparison_note(units) -> str:
+    if any(u.single_output for u in units):
+        return ("Same source image for every model. LLMs received a 2212x1659 JPEG (q95, Lanczos); DeepForest M01 the "
+                "original 8192x6144 pixels; M02v2 a Lanczos resample to a nominal 10 cm/px. LLM spread is run-to-run "
+                "variation on ONE image; DeepForest is one deterministic output. Not independent-image performance.")
+    return COMPARISON_NOTE
+
+
+def agreement_matrices(image_id, units, results, cross_rows, path):
+    """Between-model agreement at IoU 0.50 and 0.75. Diagonal: within-model mean (n/a for a single output)."""
+    thresholds = ec.THRESHOLDS[:2]
+    names = [f"{u.model}\n{_outputs(u)}" for u in units]
+    fig, axes = plt.subplots(1, len(thresholds), figsize=(7.5 * len(thresholds), 7.2), squeeze=False)
+    fig.subplots_adjust(top=0.84, bottom=0.2, left=0.12, right=0.97, wspace=0.5)
+    for ax, t in zip(axes[0], thresholds):
+        lab = ec.threshold_label(t)
+        n = len(units)
+        mat = np.full((n, n), np.nan)
+        txt = [[""] * n for _ in range(n)]
+        for i, a in enumerate(units):
+            if a.single_output:
+                txt[i][i] = "n/a\nsingle\noutput"
+            else:
+                s = results[a.key][t].summary
+                mat[i, i] = s["agreement_mean"]
+                txt[i][i] = f"{s['agreement_mean']:.3f}\n±{s['agreement_sd'] or 0:.3f}\n({s['n_pairs']} pairs)"
+            for j, b in enumerate(units):
+                if i == j:
+                    continue
+                r = next((r for r in cross_rows if r["iou_threshold"] == lab
+                          and {r["model_config_a"], r["model_config_b"]} == {a.model_config_id, b.model_config_id}), None)
+                if r and r["agreement_mean"] is not None:
+                    mat[i, j] = r["agreement_mean"]
+                    sd = f"±{r['agreement_sd']:.3f}\n" if r["agreement_sd"] is not None else ""
+                    txt[i][j] = f"{r['agreement_mean']:.3f}\n{sd}({r['trial_pairs']} pair{'' if str(r['trial_pairs']) == '1' else 's'})"
+        im = ax.imshow(mat, vmin=0, vmax=1, cmap="viridis")
+        for i in range(n):
+            for j in range(n):
+                v = mat[i, j]
+                color = "#333" if np.isnan(v) else ("black" if v > 0.6 else "white")
+                ax.text(j, i, txt[i][j], ha="center", va="center", fontsize=8, color=color)
+        ax.set_xticks(range(n), names, fontsize=8, rotation=20, ha="right")
+        ax.set_yticks(range(n), names, fontsize=8)
+        ax.set_title(f"IoU ≥ {lab}", fontsize=11)
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="mean agreement 2M/(nA+nB)")
+    fig.suptitle(f"M. Agreement between model configurations on {image_id}\n"
+                 "Off-diagonal: every output of one model vs every output of the other (mean ± SD over pairs). "
+                 "Diagonal: within-model repeatability.", fontsize=11)
+    return finish(fig, path, "Agreement is not accuracy. A DeepForest output is compared with each LLM trial "
+                             "separately (10 pairs); it is never replicated. " + _comparison_note(units))
+
+
+def geometry_comparison(image_id, units, rows, path):
+    import evaluation_geometry as eg
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    fig.subplots_adjust(top=0.88, bottom=0.12, hspace=0.45, wspace=0.25)
+    rng = np.random.default_rng(0)
+    panels = [("box_side_m_median", "median box side √(w·h) in m (nominal GSD; log scale)", True, axes[0][0]),
+              ("coverage_fraction", "share of the image covered by at least one box", False, axes[0][1]),
+              ("overlap_ratio_summed_over_union", "summed box area / covered area (1 = boxes do not overlap)", False,
+               axes[1][0]),
+              ("boxes_in_near_duplicate_pairs_fraction",
+               f"share of boxes in a near-duplicate pair (IoU ≥ {eg.NEAR_DUPLICATE_IOU} within one output)", False,
+               axes[1][1])]
+    unit = "m"
+    if not any(r["box_side_m_median"] for r in rows):   # no GSD available: fall back to pixels
+        unit = "px"
+        panels[0] = ("box_side_px_median", "median box side √(w·h) in px (log scale)", True, axes[0][0])
+    for key, title, log, ax in panels:
+        any_positive = False
+        for i, u in enumerate(units):
+            rs = [r for r in rows if r["experiment_id"] == u.experiment_id]
+            vals = [r[key] for r in rs if r[key] is not None]
+            any_positive |= any(v > 0 for v in vals)
+            ax.scatter(i + rng.uniform(-0.12, 0.12, len(vals)), vals, s=30, color=MODEL_COLORS[i % 4], zorder=3)
+            if key.startswith("box_side_"):
+                lo = [r[f"box_side_{unit}_p10"] for r in rs if r[f"box_side_{unit}_p10"] is not None]
+                hi = [r[f"box_side_{unit}_p90"] for r in rs if r[f"box_side_{unit}_p90"] is not None]
+                if lo and hi:
+                    ax.vlines(i + 0.25, np.mean(lo), np.mean(hi), color=MODEL_COLORS[i % 4], lw=3, alpha=0.6)
+            if vals:
+                ax.text(i + 0.3, np.mean(vals), f" {np.mean(vals):.3g}", fontsize=8, va="center")
+        ax.set_xticks(range(len(units)), [_model_label(u) for u in units], fontsize=8)
+        ax.set_xlim(-0.5, len(units) - 0.1)
+        if log and any_positive:
+            ax.set_yscale("log")
+        ax.set_title(title, fontsize=10)
+    fig.suptitle(f"N. Box size, coverage and overlap on {image_id}: one dot per output", fontsize=12)
+    return finish(fig, path, "Bars in the first panel: mean p10–p90 box side over outputs. Descriptive geometry only; "
+                             "not accuracy. " + _comparison_note(units))
+
+
+def coverage_maps(image_id, units, full, path):
+    import evaluation_geometry as eg
+    scale = PLOT_WIDTH / full.width
+    thumb = np.asarray(full.resize((PLOT_WIDTH, round(full.height * scale)), Image.LANCZOS))
+    cols = min(4, len(units))
+    nrows = -(-len(units) // cols)
+    fig, axes = plt.subplots(nrows, cols, figsize=(7 * cols, 5.8 * nrows), squeeze=False)
+    fig.subplots_adjust(top=0.86, bottom=0.1, left=0.01, right=0.99, wspace=0.03, hspace=0.15)
+    for ax in axes.flat:
+        ax.set_axis_off()
+    for ax, u in zip(axes.flat, units):
+        masks = [eg.coverage_mask(eg.as_array(s.detections), u.width, u.height) for s in u.sets]
+        frac = np.mean(masks, axis=0)
+        ax.imshow(thumb)
+        overlay = np.zeros(frac.shape + (4,))
+        overlay[..., 0], overlay[..., 2] = 1.0, 0.6
+        overlay[..., 3] = frac * 0.65
+        ax.imshow(overlay, extent=(0, thumb.shape[1], thumb.shape[0], 0), interpolation="nearest")
+        ax.set_title(f"{u.model} · {_outputs(u)}\ncovered: {np.mean([m.mean() for m in masks]):.1%} of the image",
+                     fontsize=10)
+    fig.suptitle(f"O. Where each model's boxes cover the image ({image_id}); opacity = share of outputs covering "
+                 "the location", fontsize=12)
+    return finish(fig, path, f"Coverage raster at 1/{eg.COVERAGE_FACTOR} resolution. Coverage is not correctness. "
+                  + _comparison_note(units))
 
 
 def models_side_by_side(image_id, units, acc_by_key, full, path, t=ec.THRESHOLDS[0]):
@@ -785,7 +951,7 @@ def models_side_by_side(image_id, units, acc_by_key, full, path, t=ec.THRESHOLDS
                         va="top", bbox={"facecolor": "black", "alpha": 0.6, "pad": 1, "lw": 0})
             p = next(r for r in acc.summary_rows if r["iou_threshold"] == lab and r["metric"] == "precision")["mean"]
             rcl = next(r for r in acc.summary_rows if r["iou_threshold"] == lab and r["metric"] == "recall")["mean"]
-            ax.set_title(f"{u.model} · {u.n_trials} trials · precision {p:.2f}, recall {rcl:.2f} at IoU ≥ {lab}",
+            ax.set_title(f"{u.model} · {_outputs(u)} · precision {p:.2f}, recall {rcl:.2f} at IoU ≥ {lab}",
                          fontsize=10)
         else:
             for s in u.sets:
@@ -793,7 +959,7 @@ def models_side_by_side(image_id, units, acc_by_key, full, path, t=ec.THRESHOLDS
                     b = [float(v) * scale for v in d.box]
                     ax.add_patch(Rectangle((b[0], b[1]), b[2] - b[0], b[3] - b[1], fill=False, lw=0.7,
                                            edgecolor=np.array(trial_color(s.trial)) / 255))
-            ax.set_title(f"{u.model} · {u.n_trials} trials (box colour = trial)", fontsize=10)
+            ax.set_title(f"{u.model} · {_outputs(u)} (box colour = trial)", fontsize=10)
     if any_acc:
         handles = [Patch(edgecolor=c, facecolor="none", label=OUTCOME_LABELS[k]) for k, c in OUTCOME_COLORS.items()]
         handles += [Patch(edgecolor=REF_FOUND_COLOR, facecolor="none", ls="--", label="reference tree, found in every trial"),
@@ -801,4 +967,4 @@ def models_side_by_side(image_id, units, acc_by_key, full, path, t=ec.THRESHOLDS
         fig.legend(handles=handles, loc="lower center", ncol=3, fontsize=8, frameon=False, bbox_to_anchor=(0.5, 0.03))
     fig.suptitle(f"L. Every trial's boxes for each model on {image_id}" + (" vs the human reference" if any_acc else ""),
                  fontsize=12)
-    return finish(fig, path, COMPARISON_NOTE)
+    return finish(fig, path, _comparison_note(units))

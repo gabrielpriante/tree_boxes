@@ -1,0 +1,2 @@
+image_id,model,successful_trials,mean_tree_count,standard_deviation,minimum_count,maximum_count,coefficient_of_variation,experiment_id,model_code,model_config_id,site,week,condition,altitude_m,collection,trials_recorded,invalid_trials,refusal_trials,max_tokens_trials,unresolved_trials,total_cost_usd
+LA_PT-02_64m,DeepForest M02v2,1,183,,183,183,,lowalt_pilot_pt02_64m_m02_v2,M02v2,M02v2_1e05a4037f,PT-02,NOT_APPLICABLE,ALTITUDE_TEST,64.3,low_altitude,1,0,0,0,0,0.0

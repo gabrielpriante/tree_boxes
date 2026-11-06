@@ -1,0 +1,12 @@
+{
+  "experiment_id": "lowalt_pilot_pt02_64m_m02_v2",
+  "created_utc": "2026-11-05T23:55:33+00:00",
+  "trial_convention": "one deterministic DeepForest output imported as trial 1 (primary run); not comparable to independent LLM trials",
+  "record_schema_version": "deepforest_import_v1",
+  "source": {
+    "repository": "urban-tree-vision-baselines",
+    "image_dir": "outputs/lowalt_pilot_v1/m02v2_gsd/lowalt_pilot_pt02_64m_m02_v2/M02v2_1e05a4037f/LA_PT-02_64m",
+    "run_record_sha256": "495481c27ea260c4cb65ba22865a29ba8267bbd75c46ce457f438fc3f5d66cfb",
+    "detections_sha256": "b63424a8a399f91a5b4d82b56cc1b9333684761753925f98164fb40c41d20e4e"
+  }
+}

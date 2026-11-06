@@ -1,0 +1,124 @@
+{
+  "record_schema_version": "deepforest_import_v1",
+  "experiment_id": "lowalt_pilot_ptr1_27m_m01_v1",
+  "model_config_id": "M01_9c192941f5",
+  "model_code": "M01",
+  "model": "DeepForest M01",
+  "adapter": "deepforest-local",
+  "image_id": "LA_PT-R1_27m",
+  "image_path": "drone_images/height/PT_R1/PT_R1_27m.JPG",
+  "site": "PT-R1",
+  "week": "NOT_APPLICABLE",
+  "condition": "ALTITUDE_TEST",
+  "altitude_m": "26.8",
+  "coverage_scope": "UNKNOWN",
+  "collection": "low_altitude",
+  "manifest_sha256": "6c4951119b6af6927ca4a8c3a9e890d02e328ad26d341589e83663211794db99",
+  "trial": 1,
+  "attempt": 1,
+  "trial_note": "single deterministic DeepForest output (primary run); the verification run is a reproducibility check recorded in determinism.json, not a second trial",
+  "coordinate_system": "original_pixels",
+  "image": {
+    "file_sha256": "f3ba7ede6a0fc191836d7d548a098e5dcb86b2b84994d781b494f7723b56f781",
+    "original_width": 8192,
+    "original_height": 6144,
+    "upload_width": 8192,
+    "upload_height": 6144,
+    "model_input_size": [
+      8192,
+      6144
+    ],
+    "note": "upload_* = image size given to DeepForest after preprocessing (no upload took place)"
+  },
+  "preprocessing": null,
+  "padding": null,
+  "inference_settings": {
+    "patch_size": 400,
+    "patch_overlap": 0.05,
+    "iou_threshold": 0.15,
+    "score_thresh": 0.1,
+    "nms_thresh": 0.05,
+    "dataloader_strategy": "single"
+  },
+  "checkpoint": {
+    "model_name": "weecology/deepforest-tree",
+    "revision": "cc21436bc5d572dde8ff5f93c1e71a32f563cace",
+    "weights_path": "/home/gabpe/.cache/huggingface/hub/models--weecology--deepforest-tree/blobs/d37a7af0b5ba2754282a80d41b4c7b66e8c7149234df5bf3f41bdaf57d329fc8",
+    "model_safetensors_sha256": "d37a7af0b5ba2754282a80d41b4c7b66e8c7149234df5bf3f41bdaf57d329fc8",
+    "config_json_sha256": "521e0149f0b060237c6994a69bffdff53ce5deb3beb854dad2752a3f8dd49bc4",
+    "weights_bytes": 129049980
+  },
+  "loaded_weights": {
+    "tensors_compared": 301,
+    "all_equal": true,
+    "rcnn_transform": {
+      "min_size": [
+        800
+      ],
+      "max_size": 1333
+    },
+    "model_score_thresh": 0.1,
+    "model_nms_thresh": 0.05,
+    "detections_per_img": 300
+  },
+  "environment": {
+    "python": "3.12.14",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+    "deepforest": "2.1.0",
+    "torch": "2.14.0+cu130",
+    "torch_cuda": "13.0",
+    "cudnn": 92400,
+    "cuda_available": true,
+    "gpu": "NVIDIA GeForce RTX 5070 Laptop GPU",
+    "cudnn_deterministic": false,
+    "cudnn_benchmark": false,
+    "hf_hub_offline": "1",
+    "numpy": "2.5.3",
+    "pillow": "12.3.0",
+    "pytorch-lightning": "2.6.5",
+    "huggingface-hub": "1.30.0",
+    "slidingwindow": "0.0.14",
+    "torchvision": "0.29.0"
+  },
+  "status": "success",
+  "stop_reason": "completed",
+  "tree_count": 4836,
+  "raw_box_count": 4836,
+  "scores_preserved": true,
+  "estimated_cost_usd": 0.0,
+  "api_requests_made": 0,
+  "determinism": {
+    "bitwise_identical": true,
+    "verdict": "identical",
+    "counts": [
+      4836,
+      4836
+    ],
+    "predictions_hash": [
+      "4cc3e6ae994645bdd6a3811f1c5e5fa841346efd7b21332c58f47439f93c0f12",
+      "4cc3e6ae994645bdd6a3811f1c5e5fa841346efd7b21332c58f47439f93c0f12"
+    ]
+  },
+  "llm_experiments_same_image_hash": [
+    "lowalt_pilot_ptr1_27m_m09_v1",
+    "lowalt_pilot_ptr1_27m_v1"
+  ],
+  "source": {
+    "repository": "urban-tree-vision-baselines",
+    "image_dir": "outputs/lowalt_pilot_v1/m01_native/lowalt_pilot_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m",
+    "run_record_sha256": "205396bb5ec11a13fb1aa3cf5405150422f35489012acdf337c542f9a9b59c2f",
+    "detections_sha256": "f6120fcafdc1668ea905206815a0008a3cff11708e970d9973a252c532ab1e0d"
+  },
+  "files": {
+    "detections": "detections.json",
+    "raw_predictions": "predictions_raw.csv",
+    "baselines_run_record": "run_record.json",
+    "run_log": "run.log",
+    "annotated": "annotated_original.jpg",
+    "determinism": "determinism.json"
+  },
+  "started_utc": "2026-11-05T23:38:12+00:00",
+  "finished_utc": "2026-11-05T23:38:42+00:00",
+  "inference_seconds": 19.155,
+  "imported_utc": "2026-11-05T23:55:32+00:00"
+}

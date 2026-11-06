@@ -37,6 +37,7 @@ from PIL import Image
 import box_generation as bg
 import evaluation_accuracy as ea
 import evaluation_core as ec
+import evaluation_geometry as eg
 
 ROOT = Path(__file__).resolve().parent
 RESULTS_DIR = ROOT / "benchmark_results"
@@ -127,6 +128,8 @@ class ImageTrials:
     excluded: list = field(default_factory=list)   # (trial, status) of non-success trials
     saved_summary: dict | None = None
     inputs: list = field(default_factory=list)       # (path, sha256)
+    coordinate_system: str = "normalized_0_1000"     # or "original_pixels" (DeepForest, float boxes)
+    scores: dict = field(default_factory=dict)       # detection uid -> model confidence (DeepForest only)
 
     @property
     def key(self) -> str:
@@ -135,6 +138,11 @@ class ImageTrials:
     @property
     def n_trials(self) -> int:
         return len(self.sets)
+
+    @property
+    def single_output(self) -> bool:
+        """One deterministic output (DeepForest): no between-trial repeatability can be measured."""
+        return self.n_trials < 2
 
     @property
     def counts(self) -> list:
@@ -158,7 +166,11 @@ def load_experiment(exp_dir: Path, image_root: Path, base: Path) -> list:
     saved_boxes = {}
     for r in box_rows:
         k = (r["model_config_id"], r["image_id"], int(r["trial"]))
-        saved_boxes.setdefault(k, []).append((r["tree_id"], [int(r[c]) for c in ("x_min", "y_min", "x_max", "y_max")]))
+        if "x_min_px" in r:   # DeepForest import: float original-image pixels, never the 0-1000 grid
+            box = [float(r[c]) for c in ("x_min_px", "y_min_px", "x_max_px", "y_max_px")]
+            saved_boxes.setdefault(k, []).append((r["tree_id"], box, float(r["score"])))
+        else:
+            saved_boxes.setdefault(k, []).append((r["tree_id"], [int(r[c]) for c in ("x_min", "y_min", "x_max", "y_max")]))
 
     units = {}
     for r in sorted(long_rows, key=lambda r: (r["model_config_id"], r["image_id"], int(r["trial"]))):
@@ -184,9 +196,12 @@ def load_experiment(exp_dir: Path, image_root: Path, base: Path) -> list:
                 experiment_id, cfg_id, record["model"], image_id, record["site"], str(record["altitude_m"]),
                 image_path, src_sha, size[0], size[1], img["upload_width"], img["upload_height"], [],
                 saved_summary=summary.get((image_id, cfg_id)),
-                inputs=[(rel(image_path, base), src_sha)])
+                inputs=[(rel(image_path, base), src_sha)],
+                coordinate_system=record.get("coordinate_system", "normalized_0_1000"))
         elif img["file_sha256"] != u.image_sha256:
             raise InputError(f"{record_path}: trial used a different source image hash")
+        if record.get("coordinate_system", "normalized_0_1000") != u.coordinate_system:
+            raise InputError(f"{record_path}: coordinate system differs between trials")
 
         if r["status"] != "success" or record["status"] != "success":
             u.excluded.append((trial, r["status"]))
@@ -197,10 +212,20 @@ def load_experiment(exp_dir: Path, image_root: Path, base: Path) -> list:
         trees = det["trees"]
         if len(trees) != int(r["tree_count"]) or len(trees) != record["tree_count"]:
             raise InputError(f"{det_path}: {len(trees)} boxes but tree_count is {r['tree_count']}")
-        if [(t["tree_id"], list(t["bbox"])) for t in trees] != saved_boxes.get((cfg_id, image_id, trial), []):
-            raise InputError(f"{det_path}: boxes differ from boxes_long.csv")
-        dets = tuple(ec.Detection(detection_uid(experiment_id, image_id, trial, t["tree_id"]), t["tree_id"],
-                                  ec.box_from_normalized(t["bbox"], u.width, u.height)) for t in trees)
+        if u.coordinate_system == "original_pixels":
+            if det.get("coordinate_system") != "original_pixels":
+                raise InputError(f"{det_path}: record says original_pixels but detections.json does not")
+            if [(t["tree_id"], list(t["bbox_px"]), t["score"]) for t in trees] != saved_boxes.get((cfg_id, image_id, trial), []):
+                raise InputError(f"{det_path}: boxes or scores differ from boxes_long.csv")
+            dets = tuple(ec.Detection(detection_uid(experiment_id, image_id, trial, t["tree_id"]), t["tree_id"],
+                                      ec.box_from_pixels(t["bbox_px"])) for t in trees)
+            for d, t in zip(dets, trees):
+                u.scores[d.uid] = float(t["score"])
+        else:
+            if [(t["tree_id"], list(t["bbox"])) for t in trees] != saved_boxes.get((cfg_id, image_id, trial), []):
+                raise InputError(f"{det_path}: boxes differ from boxes_long.csv")
+            dets = tuple(ec.Detection(detection_uid(experiment_id, image_id, trial, t["tree_id"]), t["tree_id"],
+                                      ec.box_from_normalized(t["bbox"], u.width, u.height)) for t in trees)
         u.sets.append(ec.DetectionSet(f"{experiment_id}/{cfg_id}", image_id, u.image_sha256, u.width, u.height,
                                       trial, dets))
 
@@ -236,6 +261,9 @@ class ThresholdResult:
 
 def evaluate_unit(u: ImageTrials, thresholds) -> dict:
     out = {}
+    if u.single_output:
+        # A single deterministic output has no trial pairs: repeatability and persistence are not applicable.
+        return {t: ThresholdResult(t, [], ec.summarize_pairs([]), [], {}, {}) for t in thresholds}
     for t in thresholds:
         pairs = ec.pairwise_trials(u.sets, t)
         groups = ec.persistence_groups(u.sets, pairs)
@@ -614,6 +642,8 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
 
     pair_rows, match_rows, summary_rows, group_rows, pers_rows = [], [], [], [], []
     for u in units:
+        if u.single_output:
+            continue  # no trial pairs or persistence groups for a single deterministic output
         ids = {"experiment_id": u.experiment_id, "model_config_id": u.model_config_id, "site": u.site,
                "image_id": u.image_id}
         for t, tr in results[u.key].items():
@@ -680,18 +710,23 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
     for u in units:
         for s in sorted(u.sets, key=lambda s: s.trial):
             for d in s.detections:
-                norm = [round(float(v) * 1000 / (u.width if i % 2 == 0 else u.height)) for i, v in enumerate(d.box)]
+                if u.coordinate_system == "original_pixels":
+                    norm = [""] * 4   # pixel-native output: never put on the 0-1000 grid
+                    px = [repr(float(v)) for v in d.box]   # full precision (the CSV writer rounds floats)
+                else:
+                    norm = [round(float(v) * 1000 / (u.width if i % 2 == 0 else u.height)) for i, v in enumerate(d.box)]
+                    px = [float(v) for v in d.box]
                 row = {"detection_uid": d.uid, "experiment_id": u.experiment_id, "model_config_id": u.model_config_id,
                        "image_id": u.image_id, "trial": s.trial, "tree_id": d.label,
                        "x_min_norm": norm[0], "y_min_norm": norm[1], "x_max_norm": norm[2], "y_max_norm": norm[3],
-                       "x_min_px": float(d.box[0]), "y_min_px": float(d.box[1]),
-                       "x_max_px": float(d.box[2]), "y_max_px": float(d.box[3])}
+                       "x_min_px": px[0], "y_min_px": px[1], "x_max_px": px[2], "y_max_px": px[3]}
                 for t, tr in results[u.key].items():
                     tag = ec.threshold_tag(t)
-                    g = group_of[(u.key, t)][d.uid]
-                    row[f"group_{tag}"] = g.group_id
-                    row[f"group_status_{tag}"] = g.status
-                    row[f"other_trials_matched_{tag}"] = tr.frequency[d.uid]
+                    g = group_of[(u.key, t)].get(d.uid)
+                    row[f"group_{tag}"] = g.group_id if g else ""
+                    row[f"group_status_{tag}"] = g.status if g else "NOT_APPLICABLE_SINGLE_OUTPUT"
+                    row[f"other_trials_matched_{tag}"] = tr.frequency.get(d.uid, "")
+                row["score"] = repr(u.scores[d.uid]) if d.uid in u.scores else ""
                 det_rows.append(row)
     write_csv(output_dir / "detections.csv", list(det_rows[0]), det_rows)
 
@@ -731,6 +766,13 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
         write_csv(output_dir / "model_comparison.csv", list(comparison_rows[0]), comparison_rows)
         write_csv(output_dir / "cross_model_agreement.csv", list(cross_rows[0]), cross_rows)
 
+    # -- box geometry, coverage and (between models) coverage overlap and fragmentation
+    geometry_rows = geometry_table(units)
+    write_csv(output_dir / "geometry_summary.csv", list(geometry_rows[0]), geometry_rows)
+    coverage_rows = cross_model_coverage(units)
+    if coverage_rows:
+        write_csv(output_dir / "cross_model_coverage.csv", list(coverage_rows[0]), coverage_rows)
+
     # -- altitude-series organisation
     alt_rows = altitude_series_rows(manifest, image_root, units) if manifest.exists() else []
     if alt_rows:
@@ -741,7 +783,8 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
     if figures:
         import evaluation_plots as ep
         for u in units:
-            figure_paths[u.key] = ep.make_figures(u, results[u.key], stats[u.key], output_dir, full_res_maps)
+            if not u.single_output:  # figures A-E describe between-trial repeatability
+                figure_paths[u.key] = ep.make_figures(u, results[u.key], stats[u.key], output_dir, full_res_maps)
         ep.make_review_images(unit_crops, output_dir)
         ref_path = review_dir / "reference_boxes.csv"
         ref_rows = read_csv(ref_path) if ref_path.exists() else []
@@ -758,7 +801,8 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
             group = [u for u in units if u.image_id == image_id]
             figure_paths[f"comparison/{image_id}"] = ep.comparison_figures(
                 image_id, group, results, stats, acc_by_key, [r for r in cross_rows if r["image_id"] == image_id],
-                output_dir)
+                output_dir, [r for r in geometry_rows if r["image_id"] == image_id],
+                [r for r in coverage_rows if r["image_id"] == image_id])
 
     config = {
         "algorithm_version": ec.ALGORITHM_VERSION,
@@ -784,6 +828,7 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
                           alt_rows, figure_paths, output_dir, created)
     if comparison_rows:
         report += comparison_section(comparison_rows, cross_rows, thresholds)
+    report += geometry_section(units, geometry_rows, coverage_rows)
     (output_dir / "evaluation_report.md").write_text(report, encoding="utf-8")
     if accuracy_results:
         (output_dir / "accuracy_report.md").write_text(
@@ -792,7 +837,94 @@ def run(results_dir: Path = RESULTS_DIR, experiments=None, output_dir: Path = OU
         log(f"Created in {review_dir} (never overwritten): {', '.join(created)}")
     log(f"Wrote {output_dir}")
     return {"units": units, "results": results, "stats": stats, "review": review, "figures": figure_paths,
-            "accuracy_rows": accuracy_rows, "accuracy": accuracy_results, "created_review_files": created}
+            "accuracy_rows": accuracy_rows, "accuracy": accuracy_results, "created_review_files": created,
+            "comparison_rows": comparison_rows, "cross_rows": cross_rows, "geometry_rows": geometry_rows,
+            "coverage_rows": coverage_rows}
+
+
+def image_gsd_m(u: ImageTrials) -> float | None:
+    """Nominal GSD (m/px) from relative altitude above takeoff and the 35 mm-equivalent focal length."""
+    try:
+        f35 = float(xmp_values(u.image_path).get("FocalLengthIn35mmFilm") or 0)
+        return ground_sampling(float(u.altitude_m), f35, u.width, u.height)[2] if f35 else None
+    except (ValueError, OSError):
+        return None
+
+
+def geometry_table(units) -> list:
+    rows = []
+    gsd = {}
+    for u in units:
+        g = gsd.setdefault(u.image_id, image_gsd_m(u))
+        for s in sorted(u.sets, key=lambda s: s.trial):
+            rows.append({"experiment_id": u.experiment_id, "model_config_id": u.model_config_id, "model": u.model,
+                         "site": u.site, "image_id": u.image_id, "trial": s.trial,
+                         "output_type": "single deterministic output" if u.single_output else "independent trial",
+                         "nominal_gsd_cm": g * 100 if g else None,
+                         **eg.set_geometry(s.detections, u.width, u.height, g)})
+    return rows
+
+
+def cross_model_coverage(units) -> list:
+    """Every output of one configuration against every output of another on the same image: coverage-mask IoU
+    and how many boxes of the configuration with more boxes fall inside each box of the other."""
+    rows = []
+    by_image = {}
+    for u in units:
+        by_image.setdefault(u.image_id, []).append(u)
+    for image_id, group in sorted(by_image.items()):
+        for a, b in combinations(sorted(group, key=lambda u: (u.model_config_id, u.experiment_id)), 2):
+            if a.model_config_id == b.model_config_id:
+                continue
+            fine, coarse = (a, b) if statistics.fmean(a.counts) >= statistics.fmean(b.counts) else (b, a)
+            for sf in sorted(fine.sets, key=lambda s: s.trial):
+                for sc in sorted(coarse.sets, key=lambda s: s.trial):
+                    ec.require_same_image(sf, sc)
+                    rows.append({"image_id": image_id, "fine_model": fine.model, "fine_config": fine.model_config_id,
+                                 "fine_trial": sf.trial, "coarse_model": coarse.model,
+                                 "coarse_config": coarse.model_config_id, "coarse_trial": sc.trial,
+                                 "coverage_mask_iou": eg.mask_iou(sf.detections, sc.detections, a.width, a.height),
+                                 **eg.fragmentation(sf.detections, sc.detections)})
+    return rows
+
+
+def geometry_section(units, geometry_rows, coverage_rows) -> str:
+    L = ["\n## 9. Box geometry, coverage and overlap (descriptive)\n",
+         "Per output (one LLM trial, or the single DeepForest output); LLM values are the mean over trials. Box side = "
+         "√(width × height). Metres use the nominal GSD from relative altitude above takeoff (an estimate; canopy "
+         f"tops are closer to the camera). Coverage = share of the image inside at least one box (raster at 1/"
+         f"{eg.COVERAGE_FACTOR} resolution). Overlap ratio = summed box area / covered area (1 = no overlap). "
+         f"Near-duplicates: pairs within one output with IoU ≥ {eg.NEAR_DUPLICATE_IOU}. None of this is accuracy.\n",
+         "| Image | Model | Outputs | Boxes | Box side median px (m) [p10–p90 m] | Coverage | Overlap ratio | "
+         "Boxes in near-duplicate pairs | Boxes per 100 m² |",
+         "|---|---|---|---|---|---|---|---|---|"]
+    for u in units:
+        rs = [r for r in geometry_rows if r["experiment_id"] == u.experiment_id and r["image_id"] == u.image_id]
+
+        def m(k, rs=rs):
+            vals = [r[k] for r in rs if r[k] is not None]
+            return statistics.fmean(vals) if vals else None
+        L.append(f"| {u.image_id} | {u.model} | {len(rs)} | {fnum(m('n_boxes'), 1)} | {fnum(m('box_side_px_median'), 0)} "
+                 f"({fnum(m('box_side_m_median'), 2)}) [{fnum(m('box_side_m_p10'), 2)}–{fnum(m('box_side_m_p90'), 2)}] | "
+                 f"{fnum(m('coverage_fraction'))} | {fnum(m('overlap_ratio_summed_over_union'), 2)} | "
+                 f"{fnum(m('boxes_in_near_duplicate_pairs_fraction'))} | {fnum(m('boxes_per_100_m2'), 2)} |")
+    if coverage_rows:
+        L += ["\nBetween configurations (every output of one against every output of the other; mean over pairs). "
+              "'Fine' is the configuration with more boxes.\n",
+              "| Image | Fine model | Coarse model | Pairs | Coverage-mask IoU | Fine centres per coarse box | "
+              "Coarse boxes with 0 / ≥2 fine centres | Fine centres inside any coarse box |",
+              "|---|---|---|---|---|---|---|---|"]
+        keys = sorted({(r["image_id"], r["fine_model"], r["coarse_model"]) for r in coverage_rows})
+        for k in keys:
+            rs = [r for r in coverage_rows if (r["image_id"], r["fine_model"], r["coarse_model"]) == k]
+
+            def m(f, rs=rs):
+                vals = [r[f] for r in rs if r[f] is not None]
+                return statistics.fmean(vals) if vals else None
+            L.append(f"| {k[0]} | {k[1]} | {k[2]} | {len(rs)} | {fnum(m('coverage_mask_iou'))} | "
+                     f"{fnum(m('fine_centres_per_coarse_box_mean'), 2)} | {fnum(m('coarse_boxes_with_0_fine'), 1)} / "
+                     f"{fnum(m('coarse_boxes_with_2plus_fine'), 1)} | {fnum(m('fine_centres_inside_any_coarse_fraction'))} |")
+    return "\n".join(L) + "\n"
 
 
 def model_comparison(units, results, stats, accuracy_results, thresholds) -> tuple:
@@ -947,8 +1079,16 @@ def build_report(units, results, stats, inv_rows, review, rs, accuracy_rows, acc
     w("|---|---|---|---|---|---|")
     for u in units:
         s = stats[u.key]
+        if u.single_output:
+            w(f"| {u.image_id} ({u.model}) | {', '.join(map(str, u.counts))} | {fnum(s['mean'], 2)} | "
+              f"single deterministic output; not applicable | – | – |")
+            continue
         w(f"| {u.image_id} | {', '.join(map(str, u.counts))} | {fnum(s['mean'], 2)} | {fnum(s['sd'])} | "
           f"{s['min']}–{s['max']} | {fnum(s['cv'] * 100 if s['cv'] is not None else None, 1)}% |")
+    if any(u.single_output for u in units):
+        w("\nDeepForest outputs are one deterministic run each (a verification rerun was bitwise identical; see "
+          "`determinism.json` in each record). Between-trial count, spatial and persistence statistics do not "
+          "apply to them and are omitted below.")
 
     w("\n## 2. Spatial consistency between trials\n")
     w("Each of the n(n−1)/2 trial pairs is matched one-to-one at each threshold. "
@@ -956,6 +1096,8 @@ def build_report(units, results, stats, inv_rows, review, rs, accuracy_rows, acc
     w("| Image | IoU ≥ | Pairs | Agreement mean | SD | Median | Range | Pairs at 100% | Matched IoU mean | Matched IoU median |")
     w("|---|---|---|---|---|---|---|---|---|---|")
     for u in units:
+        if u.single_output:
+            continue
         for t, tr in results[u.key].items():
             s = tr.summary
             w(f"| {u.image_id} | {ec.threshold_label(t)} | {s['n_pairs']} | {fnum(s['agreement_mean'])} | "
@@ -966,6 +1108,8 @@ def build_report(units, results, stats, inv_rows, review, rs, accuracy_rows, acc
     w("Groups are recurring detections: at most one box per trial, and every two members matched directly "
       "(no chaining). Components that fail either rule are **ambiguous** and are listed rather than split.\n")
     for u in units:
+        if u.single_output:
+            continue
         bins = ec.persistence_bins(u.n_trials)
         w(f"**{u.image_id}** ({u.n_trials} trials, {sum(u.counts)} detections)\n")
         w("| IoU ≥ | " + " | ".join(f"groups in {lab} trials" for lab, _, _ in bins)

@@ -1,0 +1,169 @@
+{
+  "record_schema_version": "deepforest_import_v1",
+  "experiment_id": "lowalt_pilot_ptr1_27m_m02_v2",
+  "model_config_id": "M02v2_b25eccbcc7",
+  "model_code": "M02v2",
+  "model": "DeepForest M02v2",
+  "adapter": "deepforest-local",
+  "image_id": "LA_PT-R1_27m",
+  "image_path": "drone_images/height/PT_R1/PT_R1_27m.JPG",
+  "site": "PT-R1",
+  "week": "NOT_APPLICABLE",
+  "condition": "ALTITUDE_TEST",
+  "altitude_m": "26.8",
+  "coverage_scope": "UNKNOWN",
+  "collection": "low_altitude",
+  "manifest_sha256": "6c4951119b6af6927ca4a8c3a9e890d02e328ad26d341589e83663211794db99",
+  "trial": 1,
+  "attempt": 1,
+  "trial_note": "single deterministic DeepForest output (primary run); the verification run is a reproducibility check recorded in determinism.json, not a second trial",
+  "coordinate_system": "original_pixels",
+  "image": {
+    "file_sha256": "f3ba7ede6a0fc191836d7d548a098e5dcb86b2b84994d781b494f7723b56f781",
+    "original_width": 8192,
+    "original_height": 6144,
+    "upload_width": 387,
+    "upload_height": 290,
+    "model_input_size": [
+      400,
+      400
+    ],
+    "note": "upload_* = image size given to DeepForest after preprocessing (no upload took place)"
+  },
+  "preprocessing": {
+    "preprocessing_version": "gsd_resample_v2",
+    "resampling": "PIL.Image.Resampling.LANCZOS",
+    "jpeg_quality": 95,
+    "source_path": "/mnt/c/Users/gabpe/OneDrive/Documents/src/tree_boxes/drone_images/height/PT_R1/PT_R1_27m.JPG",
+    "source_sha256": "f3ba7ede6a0fc191836d7d548a098e5dcb86b2b84994d781b494f7723b56f781",
+    "source_mode": "RGB",
+    "output_path": "outputs/lowalt_pilot_v1/m02v2_gsd/lowalt_pilot_ptr1_27m_m02_v2/M02v2_b25eccbcc7/LA_PT-R1_27m/run_01_primary/preprocessed/PT_R1_27m_gsd10cm.jpg",
+    "output_sha256": "d221222554c4ff42c389df6808d24afc6da3b9ce2450b69afed22ab06c9532cb",
+    "native_gsd_cm": 0.472,
+    "target_gsd_cm": 10.0,
+    "resize_factor_exact": 0.0472,
+    "original_size": [
+      8192,
+      6144
+    ],
+    "resampled_size": [
+      387,
+      290
+    ],
+    "applied_scale_x": 0.0472412109375,
+    "applied_scale_y": 0.047200520833333336,
+    "applied_vs_exact_relative_difference": [
+      0.0008731130826271638,
+      1.103460451989946e-05
+    ],
+    "forward_transform": "x_resampled = x_original * applied_scale_x; y_resampled = y_original * applied_scale_y",
+    "inverse_transform": "x_original = x_resampled / applied_scale_x; y_original = y_resampled / applied_scale_y"
+  },
+  "padding": {
+    "version": "pad_to_patch_v1",
+    "image_size": [
+      387,
+      290
+    ],
+    "padded_size": [
+      400,
+      400
+    ],
+    "pad_right": 13,
+    "pad_bottom": 110,
+    "pad_value": 0,
+    "boxes_dropped_in_padding": 0,
+    "boxes_clipped_at_padding": 0
+  },
+  "inference_settings": {
+    "patch_size": 400,
+    "patch_overlap": 0.05,
+    "iou_threshold": 0.15,
+    "score_thresh": 0.1,
+    "nms_thresh": 0.05,
+    "dataloader_strategy": "single"
+  },
+  "checkpoint": {
+    "model_name": "weecology/deepforest-tree",
+    "revision": "cc21436bc5d572dde8ff5f93c1e71a32f563cace",
+    "weights_path": "/home/gabpe/.cache/huggingface/hub/models--weecology--deepforest-tree/blobs/d37a7af0b5ba2754282a80d41b4c7b66e8c7149234df5bf3f41bdaf57d329fc8",
+    "model_safetensors_sha256": "d37a7af0b5ba2754282a80d41b4c7b66e8c7149234df5bf3f41bdaf57d329fc8",
+    "config_json_sha256": "521e0149f0b060237c6994a69bffdff53ce5deb3beb854dad2752a3f8dd49bc4",
+    "weights_bytes": 129049980
+  },
+  "loaded_weights": {
+    "tensors_compared": 301,
+    "all_equal": true,
+    "rcnn_transform": {
+      "min_size": [
+        800
+      ],
+      "max_size": 1333
+    },
+    "model_score_thresh": 0.1,
+    "model_nms_thresh": 0.05,
+    "detections_per_img": 300
+  },
+  "environment": {
+    "python": "3.12.14",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+    "deepforest": "2.1.0",
+    "torch": "2.14.0+cu130",
+    "torch_cuda": "13.0",
+    "cudnn": 92400,
+    "cuda_available": true,
+    "gpu": "NVIDIA GeForce RTX 5070 Laptop GPU",
+    "cudnn_deterministic": false,
+    "cudnn_benchmark": false,
+    "hf_hub_offline": "1",
+    "numpy": "2.5.3",
+    "pillow": "12.3.0",
+    "pytorch-lightning": "2.6.5",
+    "huggingface-hub": "1.30.0",
+    "slidingwindow": "0.0.14",
+    "torchvision": "0.29.0"
+  },
+  "status": "success",
+  "stop_reason": "completed",
+  "tree_count": 20,
+  "raw_box_count": 20,
+  "scores_preserved": true,
+  "estimated_cost_usd": 0.0,
+  "api_requests_made": 0,
+  "determinism": {
+    "bitwise_identical": true,
+    "verdict": "identical",
+    "counts": [
+      20,
+      20
+    ],
+    "predictions_hash": [
+      "a960249de405f1ba6d58d3a1cc2b796721bf7dc1093ef4abd915e5f73ae7f7e6",
+      "a960249de405f1ba6d58d3a1cc2b796721bf7dc1093ef4abd915e5f73ae7f7e6"
+    ]
+  },
+  "llm_experiments_same_image_hash": [
+    "lowalt_pilot_ptr1_27m_m09_v1",
+    "lowalt_pilot_ptr1_27m_v1"
+  ],
+  "source": {
+    "repository": "urban-tree-vision-baselines",
+    "image_dir": "outputs/lowalt_pilot_v1/m02v2_gsd/lowalt_pilot_ptr1_27m_m02_v2/M02v2_b25eccbcc7/LA_PT-R1_27m",
+    "run_record_sha256": "5aced24e096b3632eba0308602f6ab9390022f5afda6574bfe123b17de3195ff",
+    "detections_sha256": "e64c0148ac4cb931b29cc7ca6a97ef57dee14731adb156e91d0e3f2ec23e1d72"
+  },
+  "files": {
+    "detections": "detections.json",
+    "raw_predictions": "predictions_raw.csv",
+    "baselines_run_record": "run_record.json",
+    "run_log": "run.log",
+    "annotated": "annotated_original.jpg",
+    "annotated_processed": "annotated_processed.jpg",
+    "determinism": "determinism.json",
+    "preprocessed_image": "PT_R1_27m_gsd10cm.jpg"
+  },
+  "started_utc": "2026-11-05T23:39:12+00:00",
+  "finished_utc": "2026-11-05T23:39:22+00:00",
+  "inference_seconds": 1.144,
+  "imported_utc": "2026-11-05T23:55:33+00:00"
+}

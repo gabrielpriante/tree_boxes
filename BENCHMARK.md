@@ -342,8 +342,27 @@ implemented, as described above. A new adapter implements `config()`, `max_outpu
 and can override `image_tokens()`, `image_meta()` and `describe()` for provider-specific image accounting.
 It inherits the same manifest,
 trial numbering, folder layout and CSVs. Deterministic models such as DeepForest may produce identical results
-across trials; that's expected and should not be "fixed" by adding randomness. No DeepForest outputs exist in
-this repository (`deepforest_images/` is empty), so none were touched.
+across trials; that's expected and should not be "fixed" by adding randomness. The historical DeepForest
+outputs (95 m imagery, `outputs/experiment_001/` in `urban-tree-vision-baselines`) are not in this repository and
+were not touched. The pilot DeepForest runs are imported as single deterministic outputs (next section), not
+through an adapter.
+
+## DeepForest M01 / M02 v2 (local inference, imported)
+
+DeepForest is not run by `benchmark_runner.py`. The pilot runs (5 November 2026) were executed in
+`urban-tree-vision-baselines` (`scripts/run_deepforest_lowalt_v1.py`; registry `docs/lowalt_pilot_v1_deepforest.md`):
+* pinned checkpoint `weecology/deepforest-tree@cc21436b…`, loaded offline;
+* historical frozen settings;
+* M01 on the original image; M02 v2 on a Lanczos resample to a nominal 10 cm/px, with PT-R1 padded to one 400 px
+  window.
+
+`import_deepforest.py` then imports them as experiments `lowalt_pilot_{ptr1_27m,pt02_64m}_{m01_v1,m02_v2}`:
+* one deterministic output each (trial 1), verified bit-identical on a rerun;
+* float pixel boxes and scores;
+* no cost and no API calls.
+
+The import refuses to overwrite and cross-checks the image hash against the manifest and every M08/M09 record.
+See `EVALUATION.md` for how single-output, pixel-native records are evaluated.
 
 ## Evaluation
 

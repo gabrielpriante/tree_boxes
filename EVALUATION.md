@@ -15,7 +15,9 @@ python -m pytest tests -q                                        # offline tests
 |---|---|
 | `evaluation_core.py` | Model-agnostic metrics: exact IoU, one-to-one matching, pairwise agreement, persistence groups, accuracy against a reference. No file I/O. |
 | `evaluate_consistency.py` | Loads and verifies saved results, writes the CSVs, review materials, report and config. |
-| `evaluation_plots.py` | Figures A–E, review crops and contact sheets. |
+| `evaluation_plots.py` | Figures A–O, review crops and contact sheets. |
+| `evaluation_geometry.py` | Box size, coverage, within-output overlap, coverage-mask agreement and fragmentation (descriptive). |
+| `import_deepforest.py` | Imports DeepForest runs from `urban-tree-vision-baselines` as pixel-native, single-output experiments. |
 
 ## Four kinds of evidence, kept separate
 
@@ -217,6 +219,66 @@ the same places. It says nothing about which is correct. For PT-02, which has no
 and between-model agreement are reported. Reasoning-effort settings are not computationally equivalent across
 providers, so model rows are configurations, not "equal-effort" conditions. These outputs appear only when such
 data exists. Nothing is produced for a single configuration.
+
+## Deterministic single-output producers (DeepForest) and pixel-native boxes
+
+DeepForest M01 / M02 v2 runs come from `urban-tree-vision-baselines` and are added with `import_deepforest.py`.
+The importer:
+* takes the **primary** run as trial 1. The bit-identical verification run is a reproducibility check, recorded
+  in `determinism.json`, and is not imported as a trial;
+* refuses unless the source hash agrees across the manifest, the local file, the DeepForest run record and every
+  M08/M09 record on that image;
+* refuses to overwrite an existing experiment folder.
+
+**Records.** `record.json` carries `coordinate_system: "original_pixels"`. `boxes_long.csv` has `x_min_px … y_max_px`
+and `score` columns at full float precision. Boxes are **never** put on the LLMs' 0–1000 grid: their
+`x_*_norm` columns in `detections.csv` are blank. The loader checks `detections.json` against `boxes_long.csv`,
+scores included, and turns each float into an exact rational through its decimal string. Every IoU stays exact.
+
+**A unit with one output** (`single_output`):
+* has no trial pairs, so count SD/CV, within-model agreement, persistence groups, review units and figures A–E are
+  reported as *not applicable*, not as zero;
+* still gets accuracy against a COMPLETE reference (figures F–J; the J error-case sheet shows at most 24
+  false-positive boxes, nearest to reference trees first, and lists all of them in `prediction_outcomes.csv`);
+* is compared between models with each trial of the other model separately: one DeepForest output against 10
+  LLM trials gives 10 pairs, which are never duplicated to imitate 10 trials.
+
+**Geometry, coverage and overlap** (all units; descriptive only, never accuracy):
+* `geometry_summary.csv`, per output:
+  * box count, and box side √(w·h) in px and at the nominal GSD (p10 / median / p90);
+  * coverage (share of the image inside any box, on a raster at 1/8 resolution);
+  * summed box area / covered area;
+  * near-duplicate pairs (IoU ≥ 0.3 within one output);
+  * boxes per 100 m².
+* `cross_model_coverage.csv`, per pair of outputs from different configurations:
+  * coverage-mask IoU;
+  * how many box centres of the configuration with more boxes fall inside each box of the other (fragmentation);
+  * the share of its centres inside any of them.
+* Report section 9.
+
+**Figures** for comparisons with more than two configurations or with a single-output unit. A two-LLM comparison
+keeps only K and L, as before.
+* **M:** between-model agreement matrices at IoU 0.50 / 0.75. The diagonal is within-model repeatability, n/a for
+  a single output.
+* **N:** box size, coverage and overlap, one dot per output.
+* **O:** coverage maps.
+* **K** switches to a log count axis when counts differ by more than 20× and plots per-tree detection as a share
+  of outputs.
+
+**Matching speed.** `match_boxes` first runs a vectorised float-IoU prefilter (slack 1e-6). It then computes exact
+rational IoU for every surviving pair, so results are identical to exhaustive matching, which a test checks. This
+keeps 6,320 × 42 box comparisons fast.
+
+The four-model pilot evaluation is in `evaluation_results_lowalt_v1_deepforest/`:
+
+```powershell
+python import_deepforest.py --image-dir <baselines>/outputs/lowalt_pilot_v1/<model>/<experiment>/<config>/<image>
+python evaluate_consistency.py --output-dir evaluation_results_lowalt_v1_deepforest
+```
+
+It contains every M08/M09 row of `evaluation_results/` unchanged (checked row by row on 5 November 2026; only
+`altitude_series.csv`'s `model_outputs` column now also lists the DeepForest experiments) plus the DeepForest
+units.
 
 ## Adding other models
 

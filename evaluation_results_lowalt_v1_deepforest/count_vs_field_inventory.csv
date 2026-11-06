@@ -1,0 +1,9 @@
+experiment_id,site,image_id,mean_model_count,site_field_inventory_count,inventory_scope,image_coverage_scope,difference_mean_minus_inventory,used_as_image_ground_truth,notes
+lowalt_pilot_pt02_64m_m01_v1,PT-02,LA_PT-02_64m,6320,24,SITE,UNKNOWN,6296,False,Site-level count. Not an image-level reference: image coverage_scope is UNKNOWN.
+lowalt_pilot_pt02_64m_m02_v2,PT-02,LA_PT-02_64m,183,24,SITE,UNKNOWN,159,False,Site-level count. Not an image-level reference: image coverage_scope is UNKNOWN.
+lowalt_pilot_pt02_64m_m09_v1,PT-02,LA_PT-02_64m,41.8,24,SITE,UNKNOWN,17.8,False,Site-level count. Not an image-level reference: image coverage_scope is UNKNOWN.
+lowalt_pilot_pt02_64m_v1,PT-02,LA_PT-02_64m,24.5,24,SITE,UNKNOWN,0.5,False,Site-level count. Not an image-level reference: image coverage_scope is UNKNOWN.
+lowalt_pilot_ptr1_27m_m01_v1,PT-R1,LA_PT-R1_27m,4836,11,SITE,UNKNOWN,4825,False,Site-level count. Not an image-level reference: image coverage_scope is UNKNOWN.
+lowalt_pilot_ptr1_27m_m02_v2,PT-R1,LA_PT-R1_27m,20,11,SITE,UNKNOWN,9,False,Site-level count. Not an image-level reference: image coverage_scope is UNKNOWN.
+lowalt_pilot_ptr1_27m_m09_v1,PT-R1,LA_PT-R1_27m,5.7,11,SITE,UNKNOWN,-5.3,False,Site-level count. Not an image-level reference: image coverage_scope is UNKNOWN.
+lowalt_pilot_ptr1_27m_v1,PT-R1,LA_PT-R1_27m,6.1,11,SITE,UNKNOWN,-4.9,False,Site-level count. Not an image-level reference: image coverage_scope is UNKNOWN.

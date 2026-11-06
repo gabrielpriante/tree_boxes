@@ -4,8 +4,9 @@
 
 This report covers the work held in this repository. It draws only on the saved inference records,
 evaluation outputs and human-review files cited in the final section. All findings are **preliminary and
-image-specific**: they come from 40 model trials (two model families × two drone images × 10 trials), with one
-completed human reference.
+image-specific**: they come from 40 model trials (two model families × two drone images × 10 trials), plus one
+deterministic output from each of two DeepForest configurations on the same two images, with one completed human
+reference.
 
 **Image approval.** On 5 November 2026 the project lead personally reviewed both pilot images, `LA_PT-R1_27m` and
 `LA_PT-02_64m`, and **approved them for the cross-model benchmark** as the closest achievable site-focused images.
@@ -75,6 +76,22 @@ two images**. It received byte-identical image input and the identical prompt, a
     re-running the same model.
   * **No accuracy:** PT-02 has no validated human reference, so **neither model's PT-02 detections, nor their
     closeness to the site inventory, are evidence of accuracy**.
+* **DeepForest's result depends almost entirely on input scale (5 November 2026).** The pinned pretrained
+  DeepForest checkpoint was run once per configuration on the same two images. Each output was bit-identical on a
+  verification rerun.
+  * **Native resolution (M01):** 4,836 boxes on PT-R1 and 6,320 on PT-02, with median sides of 8 cm and 18 cm.
+    These are leaf- and texture-sized fragments, not crowns. M01 matched **none** of the 11 PT-R1 reference trees
+    at any threshold, and none of the LLM boxes on either image.
+  * **Resampled to a nominal 10 cm/px (M02 v2):**
+    * PT-R1: 20 boxes. Recall at IoU ≥ 0.50 was **0.45**, the LLMs' level, but precision only 0.25 (F1 0.32 vs
+      0.56–0.57). It found **H04**, one of the five trees neither LLM ever found, at IoU 0.56. H05, H06, H09 and
+      H10 stayed undetected.
+    * PT-02: 183 boxes of about 2.7 m, against the LLMs' 25–42 boxes of about 10 m. They mostly subdivide areas
+      the LLMs box as single crowns: about 5.8 DeepForest boxes per Claude box. Agreement with either LLM is near
+      zero at IoU ≥ 0.50 (0.04–0.07).
+  * **Scope:** one output per configuration on two images. It shows how strongly DeepForest's behaviour depends on
+    resolution here. It is not a general ranking against the LLMs, which also saw a different (2212 × 1659)
+    version of each image.
 
 **State of the study today.**
 * **Repeatability and cross-model agreement** are complete for both pilot images with M08 and M09.
@@ -83,8 +100,9 @@ two images**. It received byte-identical image input and the identical prompt, a
   with substantial surrounding areas. The project lead has reviewed both pilot images and approved them as the
   closest achievable site-focused images. They are used unchanged, with no boundary mask or crop, for all
   matched-image comparisons.
+* **DeepForest M01 and M02 v2** are complete on both approved images: one verified deterministic output per
+  configuration, compared with every M08 and M09 trial, and with the PT-R1 reference.
 * **Not yet done:**
-  * DeepForest (M01/M02) on the two approved images: environment and configuration prepared, inference next;
   * comparisons across altitudes have a written design only;
   * the 20-image weekly collection is catalogued but not benchmarked.
 
@@ -150,7 +168,7 @@ these factors**.
 | Code | Approach | Status in this repository |
 |---|---|---|
 | **M08** | Claude Opus 5.5 (vision-language model, structured JSON output) | **Completed** for two images (20 trials) |
-| M01, M02 | DeepForest | Recorded in `model_adapters.py` as an existing implementation with frozen results, but **those results are not in this repository** (`deepforest_images/` is empty). Not summarized here. |
+| **M01, M02 v2** | DeepForest 2.1.0, pinned `weecology/deepforest-tree` checkpoint (M01 native resolution; M02 v2 resampled to a nominal 10 cm/px) | **Completed** on the two pilot images (5 November 2026): one verified deterministic output per configuration, run in `urban-tree-vision-baselines` and imported here. The historical 95 m DeepForest results (M02 at 7.89 cm/px) remain separate and are not compared. |
 | **M09** | OpenAI GPT-6.1 Sol (vision-language model, Responses API, high reasoning effort, structured JSON output) | **Completed** for two images (20 trials, 4 November 2026) |
 | M10 | Gemini | **Planned**; no adapter implemented |
 | Copilot | Microsoft Copilot | **Deferred**: no programmatic endpoint identified |
@@ -418,6 +436,96 @@ figures A–E in `evaluation_results/figures/lowalt_pilot_pt02_64m_m09_v1/LA_PT-
 
 ---
 
+### DeepForest M01 and M02 v2 on both pilot images (5 November 2026)
+
+**Setup.**
+- **Checkpoint:** pinned DeepForest checkpoint (`weecology/deepforest-tree` at revision `cc21436b…`, weights
+  SHA-256 `d37a7af0…`), loaded offline and checked tensor by tensor against the file.
+- **Settings:** the historical frozen inference settings, unchanged (400 px patches, overlap 0.05, cross-patch IoU
+  0.15, score 0.10, NMS 0.05).
+- **Code and outputs:** run in `urban-tree-vision-baselines` (`scripts/run_deepforest_lowalt_v1.py`; registry
+  `docs/lowalt_pilot_v1_deepforest.md`) and imported here with `import_deepforest.py`, keeping float pixel boxes
+  and confidence scores.
+
+| Configuration | Input to DeepForest | PT-R1 experiment | PT-02 experiment |
+|---|---|---|---|
+| M01 (`M01_9c192941f5`) | original 8192 × 6144 image | `lowalt_pilot_ptr1_27m_m01_v1` | `lowalt_pilot_pt02_64m_m01_v1` |
+| M02 v2 (`M02v2_b25eccbcc7` / `M02v2_1e05a4037f`) | Lanczos resample to a nominal 10 cm/px: 387 × 290 (padded to 400 × 400) / 927 × 696 | `lowalt_pilot_ptr1_27m_m02_v2` | `lowalt_pilot_pt02_64m_m02_v2` |
+
+**Why 10 cm/px.** It aligns the input with the approximate resolution of DeepForest's training imagery and with
+its 400 px windows (about 40 m). It is not an optimised or validated value. The historical 7.89 cm/px was not
+reused because its derivation is undocumented. A 7.89 cm/px sensitivity run is possible but was not executed.
+
+**How the nominal native GSD was estimated.** From the camera geometry and the height above the takeoff point:
+0.472 cm/px at 26.8 m and 1.132 cm/px at 64.3 m. Crown tops sit closer to the camera, so with 5–10 m crowns the
+true crown-level GSD on PT-R1 is about 19–37% finer.
+
+**Why PT-R1 was padded.** The 387 × 290 resample is smaller than one window. Unpadded, DeepForest would have
+enlarged it ×2.76 internally instead of the standard ×2.0, so it was padded (black, bottom/right) to 400 × 400.
+Coordinates are unchanged, and no box fell in the padding.
+
+**Determinism.** Each configuration was run twice. All four verification runs were **bit-identical** to the primary
+runs: same boxes and scores at full precision. The verification run is a reproducibility check, not a second
+trial. Each DeepForest configuration is therefore one observation per image, compared with each of the 10 LLM
+trials separately (10 pairs), never replicated to look like 10 trials.
+
+**Different inputs.** The LLMs received a 2212 × 1659 JPEG; M01 the full-resolution pixels; M02 v2 the resample.
+All boxes are compared in original-image pixels.
+
+**PT-R1 against the 11-tree reference** (LLM values: mean over 10 trials):
+
+| Model | Boxes | P / R / F1 at IoU ≥ 0.50 | P / R / F1 at IoU ≥ 0.75 | At 1.00 | Mean IoU of TPs (0.50) |
+|---|---|---|---|---|---|
+| M08 Claude Opus 5.5 | 6.1 | 0.786 / 0.436 / 0.561 | 0.148 / 0.082 / 0.105 | 0 | 0.663 |
+| M09 GPT-6.1 Sol | 5.7 | 0.850 / 0.436 / 0.575 | 0.638 / 0.327 / 0.431 | 0 | 0.802 |
+| DeepForest M01 | 4,836 | 0 / 0 / 0 (0 TP, 4,836 FP, 11 FN) | 0 / 0 / 0 | 0 | – |
+| DeepForest M02 v2 | 20 | 0.250 / 0.455 / 0.323 (5 TP, 15 FP, 6 FN) | 0.050 / 0.091 / 0.065 | 0 | 0.669 |
+
+Per reference tree:
+- **M02 v2 matched H01, H02, H03, H04 and H11** at IoU ≥ 0.50, with IoU 0.785, 0.713, 0.606, 0.558 and 0.683.
+- **H04** was missed by all 20 LLM trials. That makes M02 v2 the only configuration so far that finds any of the
+  five trees both LLMs never found.
+- **H05, H06, H09 and H10** remain undetected by every model. M02 v2 has no box overlapping H06, H09 or H10 at all,
+  and only an IoU of 0.054 with H05.
+  - H05, H10 and H09 are the three smallest reference crowns: about 0.7–0.8 m, 1.0 m and 1.5 m across at the
+    nominal GSD.
+  - H06 is about 2.3–2.6 m across, the same size as H04, which M02 v2 did find. Size alone therefore does not
+    explain the misses.
+- **H08** (missed by M02 v2, nearest box IoU 0.386) is found by most LLM trials.
+- **M02 v2's 15 false positives:** 7 overlap a reference tree below the threshold, and 8 overlap no reference tree.
+  Visually, most lie on the shrub and herbaceous beds, which the reference excludes. These boxes have no human
+  labels yet.
+- **M01's boxes have a median side of 17 px (8 cm).** Its nearest box to each reference tree reaches IoU 0.43 at
+  most (H05, the smallest crown). At 0.47 cm/px the detector sees leaves and texture, not crowns.
+
+**PT-02 (no reference: descriptive only).** Means over outputs. Box side = √(width × height), in metres at the
+nominal GSD. Coverage is the share of the image inside any box.
+
+| Model | Boxes | Median box side | Coverage | Agreement with M08 / M09 at IoU ≥ 0.50 | Coverage-mask IoU with M08 / M09 |
+|---|---|---|---|---|---|
+| M08 | 24.5 | 10.2 m | 45% | – / 0.627 | – / 0.714 |
+| M09 | 41.8 | 10.8 m | 62% | 0.627 / – | 0.714 / – |
+| DeepForest M01 | 6,320 | 0.18 m | 14% | 0.000 / 0.000 | 0.207 / 0.195 |
+| DeepForest M02 v2 | 183 | 2.65 m | 34% | 0.068 / 0.035 | 0.470 / 0.498 |
+
+M02 v2 marks largely the same canopy as the LLMs but divides it into much smaller boxes:
+- 71% of its box centres fall inside a Claude box, and 91% inside a GPT-6.1 Sol box;
+- a Claude box contains on average 5.8 M02 v2 centres, and 21 of Claude's 24.5 boxes contain two or more.
+
+M02 v2 also leaves out some canopy the LLMs include: coverage 34% against 45–62%.
+
+None of this says which granularity matches real crowns. Without a PT-02 reference, M02 v2's 183 boxes and the
+LLMs' 25–42 are equally unvalidated. The site inventory of 24 trees is context only.
+
+**Within-output overlap.** No DeepForest output contains near-duplicate boxes (IoU ≥ 0.3 within one output), and
+its boxes barely overlap (summed area / covered area ≈ 1.02–1.07). By contrast, 2.5% of M09's PT-02 boxes are
+near-duplicates, with an overlap ratio of 1.40.
+
+*Sources: `evaluation_results_lowalt_v1_deepforest/` (`accuracy_summary.csv`, `reference_detection_frequency.csv`,
+`prediction_outcomes.csv`, `cross_model_agreement.csv`, `cross_model_coverage.csv`, `geometry_summary.csv`,
+`evaluation_report.md`, `accuracy_report.md`); per-run provenance in `benchmark_results/*_m01_v1/` and
+`*_m02_v2/`.*
+
 ## E. Key Scientific Findings
 
 All findings below come from two full-frame pilot images, two model configurations (10 trials each per image) and
@@ -624,6 +732,28 @@ similarly but diverge substantially on dense canopy, in count, in which areas ar
 stability. That is a hypothesis for further images, the altitude series and additional model families
 to test.
 
+### 9. For a pretrained detector, input scale decides what counts as "a tree"
+
+DeepForest is deterministic, so all of its uncertainty here is about **configuration**, not repetition. Run
+twice, each configuration gave bit-identical output. Changing only the input resolution changed everything:
+
+* **At native resolution (0.5–1.1 cm/px),** the detector works at roughly 10–20× finer scale than its training
+  imagery. It returns thousands of centimetre-scale boxes (median 8–18 cm). These cover only 14–16% of the image
+  and match no reference tree and no LLM box.
+* **At about 10 cm/px,** it returns crown-sized objects:
+  * **PT-R1:** recall 0.45 at IoU ≥ 0.50, comparable to the LLMs, including one tree the LLMs never found (H04).
+    It returns three false positives per true positive, against about 0.2–0.3 for the LLMs.
+  * **PT-02:** 4–7× more boxes than the LLMs, with sides about 4× smaller, inside largely the same canopy areas.
+
+The PT-02 contrast is the clearest example yet of the study's central issue. Two approaches can agree **where**
+vegetation is, with coverage-mask IoU about 0.5, while disagreeing almost completely on **what the individual
+units are**: box agreement 0.04–0.07. Counts from the two families on dense canopy are therefore not
+interchangeable.
+
+The 10 cm/px setting was chosen for alignment, not tuned, and was not adjusted after the results. Other scales
+(including the historical 7.89 cm/px) remain untested. Note also that the M02 v2 target depends on a nominal GSD
+that ignores canopy height.
+
 ---
 
 ## F. Methodological Limitations
@@ -658,9 +788,23 @@ to test.
   ground truth. The pipeline never uses them to filter or correct predictions.
 * **Two model configurations.** M08 and M09 were each run at one frozen configuration with one prompt, on the
   same two images. The results say nothing about other configurations, prompts or model families.
-* **Geometry measures are not yet pipeline outputs.** The PT-02 box-size, coverage and overlap figures come from
-  a documented one-off analysis of `detections.csv` (section D). The ground-size conversions inherit the
-  approximations of the GSD estimate.
+* **Geometry measures.** The PT-02 box-size, coverage and overlap figures for M08/M09 in finding 8 came from a
+  one-off analysis of `detections.csv`. Since 5 November these measures are pipeline outputs
+  (`geometry_summary.csv`, `cross_model_coverage.csv`), computed on a coverage raster at 1/8 resolution, so
+  they differ from the one-off values in the second digit (for example 45.4% against "about 46%" coverage).
+  Ground-size conversions inherit the approximations of the GSD estimate.
+* **DeepForest comparisons.**
+  * **Single output per configuration:** each DeepForest configuration is one deterministic output per image.
+    It has no run-to-run spread, and its accuracy on PT-R1 is a single value, not a mean.
+  * **Different inputs:** it saw different input pixels from the LLMs (full resolution, or a 10 cm/px resample,
+    against a 2212 × 1659 JPEG). The comparison is between whole pipelines, not between models on identical
+    input.
+  * **Nominal GSD:** the 10 cm/px target is nominal (height above takeoff; canopy height ignored). It is an
+    alignment choice, not an optimized one.
+  * **PT-R1 padding:** the PT-R1 M02 v2 input was padded to one standard window. This is a documented,
+    coordinate-preserving step, but at this scale the whole image is a single window.
+  * **No tuning or retraining:** no score-threshold tuning, fine-tuning or crown-size filtering was done, so
+    results describe the released checkpoint at its historical settings.
 * **Comparability across providers is approximate.**
   * Both models receive identical image bytes, prompt and schema.
   * "High" reasoning effort is a provider-specific setting, not equal computation.
@@ -685,14 +829,32 @@ to test.
 | `evaluation_accuracy.py` | Accuracy against a complete human reference, with error types per box |
 | `evaluation_plots.py` | Figures A–J, review crops and contact sheets on the full-resolution images |
 | `import_reference.py` | Cross-validated import of human reference boxes from Make Sense exports |
+| `import_deepforest.py` | Imports a DeepForest primary run from `urban-tree-vision-baselines` as trial 1, keeping float pixel boxes and scores, after cross-checking the source hash with the manifest and every LLM record |
+| `evaluation_geometry.py` | Box size, coverage, within-output overlap, coverage-mask agreement and fragmentation |
 
 ### Testing and validation
 
-The suite has **192 offline tests**, all passing, and makes no network calls:
+The suite has **210 offline tests**, all passing, and makes no network calls:
 * 77 cover the benchmark runner;
 * 44 cover the evaluation;
 * 55 cover M09, using a fake OpenAI client and an offline capture of the exact HTTP request body;
-* 16 cover reference import.
+* 16 cover reference import;
+* 18 cover the DeepForest import and evaluation. They check:
+  * float boxes and scores, and that nothing is converted to the 0–1000 grid;
+  * hash cross-checks and overwrite refusal;
+  * single-output handling and the 1 × 10 between-model pairs;
+  * reference matching;
+  * that frozen LLM records are untouched;
+  * the matching prefilter against exhaustive matching;
+  * geometry.
+
+`urban-tree-vision-baselines` adds 29 offline tests for the DeepForest runner. A fake model stands in for
+inference. They cover the checkpoint pin, fidelity to the historical settings, GSD scaling, padding, coordinate
+restoration, overwrite protection and determinism reporting.
+
+**Matching speed-up (5 November 2026).** One-to-one matching now computes a float IoU prefilter first, then exact
+rational IoU for every pair that could reach the threshold. Results are identical to exhaustive matching, which a
+test checks on random boxes. The M08/M09 rows of every evaluation CSV were confirmed unchanged.
 
 A check that runs with the suite confirms that the frozen results, ledgers, human-review files and manifest are
 unchanged by the tests.
@@ -780,7 +942,7 @@ including those the PT-R1 labels were made from, remain in Git.
 | **Planned** | Human references beyond PT-R1 |
 | **Completed** | M09 (GPT-6.1 Sol): adapter, separate cost ledger and model-comparison tooling; 10 trials on each pilot image; consistency for both, accuracy for PT-R1, and the M08-vs-M09 comparison on both images (40 pilot trials in total) |
 | **Completed** | Pilot image suitability: `LA_PT-R1_27m` and `LA_PT-02_64m` reviewed and approved by the project lead as the closest achievable site-focused images (5 November 2026); decision closed |
-| **In progress** | DeepForest M01/M02 on the two pilot images: environment, pinned checkpoint and resolution (GSD) methodology being prepared; no inference yet |
+| **Completed** | DeepForest M01 (native) and M02 v2 (nominal 10 cm/px) on both pilot images: pinned checkpoint, bit-identical verification runs, import, PT-R1 accuracy and four-model comparison (5 November 2026; not yet committed) |
 | **Planned** | M10 (Gemini, 10 trials per image), then local Qwen3-VL via Ollama after hardware checks, then a small held-out DeepForest/NEON-annotated shared-reference set |
 | **Planned** | Across-altitude robustness analysis (design written in `EVALUATION.md`; requires image registration) |
 | **Deferred** | Copilot (no programmatic endpoint) |
@@ -814,9 +976,8 @@ marked *offline* need no API spending.
    * a point-based (stem or crown-centre) reference from the field inventory, if georeferenced stem positions
      exist;
    * restricting the reference to a sub-area where crowns are separable.
-6. **Model-family comparison.** M08 and M09 are complete on both pilot images. The agreed sequence is:
-   * **DeepForest M01/M02** on the same two images, with new experiment IDs; the historical 95 m DeepForest
-     results stay separate;
+6. **Model-family comparison.** M08, M09 and DeepForest M01/M02 v2 are complete on both pilot images. The agreed
+   sequence continues with:
    * **M10 Gemini**, 10 trials per image;
    * **local Qwen3-VL** through Ollama, after hardware checks;
    * a small held-out **DeepForest/NEON-annotated** shared-reference set.
@@ -900,3 +1061,19 @@ marked *offline* need no API spending.
   `L_models_side_by_side_iou050.png`
 - Human reference only: `evaluation_results/review/human_reference_LA_PT-R1_27m.jpg`; review contact sheets in
   `evaluation_results/review/`
+
+**DeepForest M01 / M02 v2 and the four-model comparison** (evaluation in
+`evaluation_results_lowalt_v1_deepforest/`. It holds the same M08/M09 rows as `evaluation_results/` plus the
+DeepForest units, geometry and coverage.)
+- Records: `benchmark_results/lowalt_pilot_{ptr1_27m,pt02_64m}_{m01_v1,m02_v2}/`. Each `record.json` holds the
+  checkpoint, weights check, environment and `determinism.json`. Annotated DeepForest images are
+  `annotated_original.jpg` there.
+- Run code, raw outputs and registry: `urban-tree-vision-baselines/outputs/lowalt_pilot_v1/` and
+  `docs/lowalt_pilot_v1_deepforest.md`
+- PT-R1 accuracy figures F–J: `evaluation_results_lowalt_v1_deepforest/figures/lowalt_pilot_ptr1_27m_{m01_v1,m02_v2}/LA_PT-R1_27m/`
+- Four-model comparison, per image, in `evaluation_results_lowalt_v1_deepforest/figures/comparison/<image>/`:
+  - `K_model_comparison.png`: counts on a log scale, within-model agreement, accuracy, per-tree detection;
+  - `L_models_side_by_side_iou050.png`;
+  - `M_agreement_matrices.png`: between-model agreement at 0.50 and 0.75;
+  - `N_geometry_coverage.png`: box size, coverage, overlap and near-duplicates;
+  - `O_coverage_maps.png`.

@@ -224,7 +224,10 @@ def report_section(res: AccuracyResult, thresholds, status_note: str, labels_by_
         for (g, typ, ref), rows in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0])):
             labels = sorted({r["human_label"] for r in rows if r["human_label"]})
             ious = [float(r["best_iou"]) for r in rows]
-            trials = ", ".join("%02d" % r["trial"] for r in rows)
+            if g:
+                trials = ", ".join("%02d" % r["trial"] for r in rows)
+            else:  # ungrouped (single-output producer): summarise instead of listing every box
+                trials = f"{len(rows)} boxes in trial(s) " + ", ".join("%02d" % t for t in sorted({r['trial'] for r in rows}))
             rng = f"{min(ious):.3f}" if min(ious) == max(ious) else f"{min(ious):.3f}–{max(ious):.3f}"
             w(f"| {g or '–'} | {', '.join(labels) or 'unlabelled'} | {typ} | {trials} | {ref or '–'} | {rng} |")
         w("")

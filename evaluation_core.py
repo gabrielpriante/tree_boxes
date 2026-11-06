@@ -123,15 +123,45 @@ def match_boxes(boxes_a, boxes_b, threshold) -> list:
     threshold = Fraction(threshold)
     if not boxes_a or not boxes_b:
         return []
-    ious = [[iou(a, b) for b in boxes_b] for a in boxes_a]
-    eligible = [[v > 0 and v >= threshold for v in row] for row in ious]
-    if not any(any(r) for r in eligible):
+    candidates = _candidate_pairs(boxes_a, boxes_b, threshold)
+    ious = {}
+    for i, j in candidates:   # exact rational IoU for every pair the float prefilter could not rule out
+        v = iou(boxes_a[i], boxes_b[j])
+        if v > 0 and v >= threshold:
+            ious[(i, j)] = v
+    if not ious:
         return []
     k = min(len(boxes_a), len(boxes_b)) + 1
-    weights = np.array([[k + float(v) if ok else 0.0 for v, ok in zip(row, oks)]
-                        for row, oks in zip(ious, eligible)])
+    weights = np.zeros((len(boxes_a), len(boxes_b)))
+    for (i, j), v in ious.items():
+        weights[i, j] = k + float(v)
     rows, cols = linear_sum_assignment(weights, maximize=True)
-    return sorted((int(i), int(j), ious[i][j]) for i, j in zip(rows, cols) if eligible[i][j])
+    return sorted((int(i), int(j), ious[(i, j)]) for i, j in zip(rows, cols) if (i, j) in ious)
+
+
+PREFILTER_SLACK = 1e-6
+
+
+def _candidate_pairs(boxes_a, boxes_b, threshold) -> list:
+    """Index pairs whose float IoU is within PREFILTER_SLACK of the threshold or above it (and > 0).
+
+    Only a speed-up: float IoU of these coordinates is accurate to far better than 1e-6, so no pair with
+    exact IoU >= threshold is discarded, and eligibility is then decided with exact Fractions."""
+    A = np.array([[float(v) for v in b] for b in boxes_a])
+    B = np.array([[float(v) for v in b] for b in boxes_b])
+    area_b = (B[:, 2] - B[:, 0]) * (B[:, 3] - B[:, 1])
+    floor = float(threshold) - PREFILTER_SLACK
+    out = []
+    for start in range(0, len(A), 512):
+        a = A[start:start + 512]
+        iw = np.minimum(a[:, None, 2], B[None, :, 2]) - np.maximum(a[:, None, 0], B[None, :, 0])
+        ih = np.minimum(a[:, None, 3], B[None, :, 3]) - np.maximum(a[:, None, 1], B[None, :, 1])
+        inter = np.clip(iw, 0, None) * np.clip(ih, 0, None)
+        area_a = (a[:, 2] - a[:, 0]) * (a[:, 3] - a[:, 1])
+        union = area_a[:, None] + area_b[None, :] - inter
+        ok = (inter > 0) & (inter >= floor * union)
+        out += [(start + int(i), int(j)) for i, j in zip(*np.nonzero(ok))]
+    return out
 
 
 def require_same_image(a: DetectionSet, b: DetectionSet, alignment=None) -> None:

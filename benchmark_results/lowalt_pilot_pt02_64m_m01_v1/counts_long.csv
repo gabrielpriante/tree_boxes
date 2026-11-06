@@ -1,0 +1,2 @@
+experiment_id,image_id,site,week,condition,altitude_m,model,trial,tree_count,input_tokens,output_tokens,estimated_cost_usd,status,model_code,model_config_id,collection,attempt,attempts_made,timestamp_utc,record_path
+lowalt_pilot_pt02_64m_m01_v1,LA_PT-02_64m,PT-02,NOT_APPLICABLE,ALTITUDE_TEST,64.3,DeepForest M01,1,6320,,,0.0,success,M01,M01_9c192941f5,low_altitude,1,1,2026-11-05T23:39:10+00:00,M01_9c192941f5/LA_PT-02_64m/trial_01/attempt_01/record.json
