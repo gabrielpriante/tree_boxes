@@ -132,11 +132,56 @@ def match_boxes(boxes_a, boxes_b, threshold) -> list:
     if not ious:
         return []
     k = min(len(boxes_a), len(boxes_b)) + 1
+    if len(boxes_a) * len(boxes_b) > COMPONENT_MATCHING_MIN_PAIRS:
+        return _match_by_component(ious, k)
     weights = np.zeros((len(boxes_a), len(boxes_b)))
     for (i, j), v in ious.items():
         weights[i, j] = k + float(v)
     rows, cols = linear_sum_assignment(weights, maximize=True)
     return sorted((int(i), int(j), ious[(i, j)]) for i, j in zip(rows, cols) if (i, j) in ious)
+
+
+# Above this many box pairs (e.g. two 6,320-box DeepForest outputs) the dense assignment matrix is replaced by one
+# small assignment per connected component of the eligible-pair graph. Every evaluation run before 9 November 2026
+# stayed below it (largest: 6,320 x 183), so their results come from the dense path unchanged.
+COMPONENT_MATCHING_MIN_PAIRS = 4_000_000
+
+
+def _match_by_component(ious: dict, k: int) -> list:
+    """Same optimum as the dense assignment: no eligible pair links two components, so maximizing the number of
+    matches (then total IoU) over the whole graph is the sum of the per-component optima. Each component is solved
+    with the same K + IoU weights."""
+    parent = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i, j in ious:
+        ra, rb = find(("a", i)), find(("b", j))
+        if ra != rb:
+            parent[ra] = rb
+    comps = {}
+    for (i, j) in ious:
+        comps.setdefault(find(("a", i)), []).append((i, j))
+    out = []
+    for pairs in comps.values():
+        rows_i = sorted({i for i, _ in pairs})
+        cols_j = sorted({j for _, j in pairs})
+        if len(pairs) == 1:
+            out.append((pairs[0][0], pairs[0][1], ious[pairs[0]]))
+            continue
+        ri, cj = {v: n for n, v in enumerate(rows_i)}, {v: n for n, v in enumerate(cols_j)}
+        w = np.zeros((len(rows_i), len(cols_j)))
+        for i, j in pairs:
+            w[ri[i], cj[j]] = k + float(ious[(i, j)])
+        rr, cc = linear_sum_assignment(w, maximize=True)
+        out += [(rows_i[r], cols_j[c], ious[(rows_i[r], cols_j[c])]) for r, c in zip(rr, cc)
+                if (rows_i[r], cols_j[c]) in ious]
+    return sorted((int(i), int(j), v) for i, j, v in out)
 
 
 PREFILTER_SLACK = 1e-6
