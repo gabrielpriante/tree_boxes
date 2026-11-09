@@ -103,8 +103,6 @@ two images**. It received byte-identical image input and the identical prompt, a
 * **DeepForest M01 and M02 v2** are complete on both approved images: one verified deterministic output per
   configuration, compared with every M08 and M09 trial, and with the PT-R1 reference.
 * **Not yet done:**
-  * M10 Gemini 3.1 Pro Preview on the same two images: implemented and tested offline. It waits for the API key,
-    billing and authorization. No Gemini results exist yet;
   * comparisons across altitudes have a written design only;
   * the 20-image weekly collection is catalogued but not benchmarked.
 
@@ -172,7 +170,7 @@ these factors**.
 | **M08** | Claude Opus 5.5 (vision-language model, structured JSON output) | **Completed** for two images (20 trials) |
 | **M01, M02 v2** | DeepForest 2.1.0, pinned `weecology/deepforest-tree` checkpoint (M01 native resolution; M02 v2 resampled to a nominal 10 cm/px) | **Completed** on the two pilot images (5 November 2026): one verified deterministic output per configuration, run in `urban-tree-vision-baselines` and imported here. The historical 95 m DeepForest results (M02 at 7.89 cm/px) remain separate and are not compared. |
 | **M09** | OpenAI GPT-6.1 Sol (vision-language model, Responses API, high reasoning effort, structured JSON output) | **Completed** for two images (20 trials, 4 November 2026) |
-| M10 | Google Gemini 3.1 Pro Preview (`gemini-3.1-pro-preview`, `thinking_level: HIGH`, image `media_resolution: ultra_high`, structured JSON output) | **Implementation in progress**: adapter, runner integration, Gemini ledger and five-configuration evaluation prepared and tested offline (5 November 2026). No Google API request has been made and no M10 result exists. See `BENCHMARK.md`. |
+| M10 | Gemini 3.1 Pro Preview | **Discontinued** (9 November 2026). An adapter was implemented and tested offline (5 November), but Google AI Studio requires a $30 minimum initial payment, so the work was replaced by a 10-run DeepForest reproducibility experiment. No Google API request was made and no Gemini result exists. The implementation was removed from the active code (it remains in Git history: commits `833c63e`–`cf2da02`). |
 | Copilot | Microsoft Copilot | **Deferred**: no programmatic endpoint identified |
 | M03–M07 | — | Not documented in this repository |
 
@@ -833,20 +831,17 @@ that ignores canopy height.
 | `import_reference.py` | Cross-validated import of human reference boxes from Make Sense exports |
 | `import_deepforest.py` | Imports a DeepForest primary run from `urban-tree-vision-baselines` as trial 1, keeping float pixel boxes and scores, after cross-checking the source hash with the manifest and every LLM record |
 | `evaluation_geometry.py` | Box size, coverage, within-output overlap, coverage-mask agreement and fragmentation |
-| `model_adapters.GeminiAdapter` | M10 Gemini 3.1 Pro Preview adapter (official `google-genai` SDK), with a separate Gemini ledger and an input-equivalence check against the saved M08/M09 records |
 
 ### Testing and validation
 
-The suite has **250 offline tests**, all passing, and makes no network calls. The 40 M10 tests (5 November 2026)
-run the real `google-genai` SDK over an in-memory transport. They cover:
-* model, thinking and media-resolution settings, and the exact serialized request;
-* byte-identical image input and prompt;
-* response, refusal and error handling, retries, and halting on a media-resolution fallback;
-* usage and cost, and the budget guard;
-* resume, independence, folder protection and secret redaction;
-* a synthetic five-configuration evaluation.
+The suite has **220 offline tests**, all passing, and makes no network calls. The 10 newest (9 November 2026)
+cover the DeepForest repeated-execution analysis on synthetic runs:
+* identical runs;
+* raw-order-only, coordinate, score and count discrepancies;
+* failed-run exclusion and input checks;
+* component-wise matching against the dense path.
 
-The earlier 210 tests:
+The earlier 210:
 * 77 cover the benchmark runner;
 * 44 cover the evaluation;
 * 55 cover M09, using a fake OpenAI client and an offline capture of the exact HTTP request body;
@@ -860,9 +855,10 @@ The earlier 210 tests:
   * the matching prefilter against exhaustive matching;
   * geometry.
 
-`urban-tree-vision-baselines` adds 29 offline tests for the DeepForest runner. A fake model stands in for
-inference. They cover the checkpoint pin, fidelity to the historical settings, GSD scaling, padding, coordinate
-restoration, overwrite protection and determinism reporting.
+`urban-tree-vision-baselines` adds 40 offline tests for the DeepForest runner. A fake model stands in for
+inference. 29 cover the checkpoint pin, fidelity to the historical settings, GSD scaling, padding, coordinate
+restoration, overwrite protection and determinism reporting. 11 cover the repeated-execution driver: pilot-identical
+configurations, the 40-run interleaved plan, resume, stop-on-failure and refusal of the pilot output root.
 
 **Matching speed-up (5 November 2026).** One-to-one matching now computes a float IoU prefilter first, then exact
 rational IoU for every pair that could reach the threshold. Results are identical to exhaustive matching, which a
@@ -955,8 +951,9 @@ including those the PT-R1 labels were made from, remain in Git.
 | **Completed** | M09 (GPT-6.1 Sol): adapter, separate cost ledger and model-comparison tooling; 10 trials on each pilot image; consistency for both, accuracy for PT-R1, and the M08-vs-M09 comparison on both images (40 pilot trials in total) |
 | **Completed** | Pilot image suitability: `LA_PT-R1_27m` and `LA_PT-02_64m` reviewed and approved by the project lead as the closest achievable site-focused images (5 November 2026); decision closed |
 | **Completed** | DeepForest M01 (native) and M02 v2 (nominal 10 cm/px) on both pilot images: pinned checkpoint, bit-identical verification runs, import, PT-R1 accuracy and four-model comparison (5 November 2026; not yet committed) |
-| **In progress** | M10 Gemini 3.1 Pro Preview: implemented and tested offline. Next: API key and billing, then one authorized PT-R1 compatibility trial, then the remaining 19 trials (10 per image). No Google request yet. |
-| **Planned** | Local Qwen3-VL via Ollama after hardware checks, then a small held-out DeepForest/NEON-annotated shared-reference set |
+| **Discontinued** | M10 Gemini (see the model roster) |
+| **Prepared, not run** | DeepForest repeated-execution experiment `lowalt_repro_v1`: 10 runs each of M01 and M02v2 (nominal 10 cm/px) on both pilot images, 40 runs, replacing M10 (approved by Dr. Elizabeth Ondula to conclude this phase). Runner, driver, analysis and figures are implemented and tested offline; inference awaits authorization. See `EVALUATION.md` and `urban-tree-vision-baselines/docs/lowalt_repro_v1_deepforest.md`. |
+| **Planned** | Local Qwen3-VL via Ollama after hardware checks, then a small held-out DeepForest/NEON-annotated shared-reference set (after the current phase concludes) |
 | **Planned** | Across-altitude robustness analysis (design written in `EVALUATION.md`; requires image registration) |
 | **Deferred** | Copilot (no programmatic endpoint) |
 | **Deferred** | Tiling or cropping to raise model input resolution (outside the frozen configuration) |
@@ -991,9 +988,10 @@ marked *offline* need no API spending.
    * restricting the reference to a sub-area where crowns are separable.
 6. **Model-family comparison.** M08, M09 and DeepForest M01/M02 v2 are complete on both pilot images. The agreed
    sequence continues with:
-   * **M10 Gemini**, 10 trials per image: implemented and tested offline. It waits for the API key, billing and
-     authorization of the compatibility trial. On PT-R1, check especially whether a third VLM finds H04, which
-     M02 v2 matched and every M08 and M09 trial missed;
+   * ~~M10 Gemini~~: discontinued on 9 November 2026 (minimum $30 initial payment); not run. It is replaced by a
+     10-run DeepForest repeated-execution experiment (prepared; awaiting authorization), which tests whether the
+     deterministic configurations reproduce identical boxes. Those runs are repeated executions, not independent
+     observations;
    * **local Qwen3-VL** through Ollama, after hardware checks;
    * a small held-out **DeepForest/NEON-annotated** shared-reference set.
 
