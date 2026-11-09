@@ -1,0 +1,29 @@
+{
+  "preprocessing_version": "gsd_resample_v2",
+  "resampling": "PIL.Image.Resampling.LANCZOS",
+  "jpeg_quality": 95,
+  "source_path": "/mnt/c/Users/gabpe/OneDrive/Documents/src/tree_boxes/drone_images/height/PT_02/PT_02_64m.JPG",
+  "source_sha256": "25f3c331564db9cc9ada0e151bbec16506b8702dd34ce245dc5c671b427c85b4",
+  "source_mode": "RGB",
+  "output_path": "outputs/lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_01_repeat/preprocessed/PT_02_64m_gsd10cm.jpg",
+  "output_sha256": "b35584b295a442b4271985f7ead61e73bafa00d09840263e0513909b171219ca",
+  "native_gsd_cm": 1.132,
+  "target_gsd_cm": 10.0,
+  "resize_factor_exact": 0.1132,
+  "original_size": [
+    8192,
+    6144
+  ],
+  "resampled_size": [
+    927,
+    696
+  ],
+  "applied_scale_x": 0.1131591796875,
+  "applied_scale_y": 0.11328125,
+  "applied_vs_exact_relative_difference": [
+    -0.0003606034673144798,
+    0.0007177561837456992
+  ],
+  "forward_transform": "x_resampled = x_original * applied_scale_x; y_resampled = y_original * applied_scale_y",
+  "inverse_transform": "x_original = x_resampled / applied_scale_x; y_original = y_resampled / applied_scale_y"
+}

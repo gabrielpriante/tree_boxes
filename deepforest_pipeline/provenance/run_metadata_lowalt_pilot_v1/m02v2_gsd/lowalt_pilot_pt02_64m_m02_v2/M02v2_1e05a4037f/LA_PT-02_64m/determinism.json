@@ -1,0 +1,35 @@
+{
+  "image_id": "LA_PT-02_64m",
+  "experiment_id": "lowalt_pilot_pt02_64m_m02_v2",
+  "model_config_id": "M02v2_1e05a4037f",
+  "inputs_identical": {
+    "source_sha256": true,
+    "model_config_id": true,
+    "config": true,
+    "checkpoint": true,
+    "preprocessed_sha256": true
+  },
+  "counts": [
+    183,
+    183
+  ],
+  "raw_counts": [
+    183,
+    183
+  ],
+  "predictions_hash": [
+    "54323519c4ff0f47e689618d2de7f9a4bde9fd772db5ec0775268119e26538e9",
+    "54323519c4ff0f47e689618d2de7f9a4bde9fd772db5ec0775268119e26538e9"
+  ],
+  "raw_predictions_hash": [
+    "54323519c4ff0f47e689618d2de7f9a4bde9fd772db5ec0775268119e26538e9",
+    "54323519c4ff0f47e689618d2de7f9a4bde9fd772db5ec0775268119e26538e9"
+  ],
+  "inference_seconds": [
+    1.369,
+    1.338
+  ],
+  "note": "verification run is a reproducibility check, not an independent observation",
+  "bitwise_identical": true,
+  "verdict": "identical"
+}

@@ -1,0 +1,33 @@
+{
+  "runner_version": "lowalt_pilot_v1",
+  "model_code": "M02v2",
+  "method": "DeepForest GSD-Corrected v2",
+  "deepforest_version": "2.1.0",
+  "model_name": "weecology/deepforest-tree",
+  "model_revision": "cc21436bc5d572dde8ff5f93c1e71a32f563cace",
+  "model_safetensors_sha256": "d37a7af0b5ba2754282a80d41b4c7b66e8c7149234df5bf3f41bdaf57d329fc8",
+  "inference": {
+    "patch_size": 400,
+    "patch_overlap": 0.05,
+    "iou_threshold": 0.15,
+    "score_thresh": 0.1,
+    "nms_thresh": 0.05,
+    "dataloader_strategy": "single"
+  },
+  "preprocessing": {
+    "version": "gsd_resample_v2",
+    "resampling": "PIL.Image.Resampling.LANCZOS",
+    "jpeg_quality": 95,
+    "native_gsd_cm": 0.472,
+    "native_gsd_basis": "nominal estimate from camera geometry (EXIF focal length and 35 mm equivalent) and DJI relative altitude above the takeoff point; not a measured GSD",
+    "target_gsd_cm": 10.0,
+    "padding": {
+      "version": "pad_to_patch_v1",
+      "applies_when": "resampled side < patch_size",
+      "pad_to": 400,
+      "anchor": "top-left (pad bottom/right)",
+      "pad_value": 0
+    }
+  },
+  "output_coordinates": "original-image pixels, float"
+}

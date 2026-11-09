@@ -1,0 +1,151 @@
+{
+  "runner_version": "lowalt_pilot_v1",
+  "experiment_id": "lowalt_repro_pt02_64m_m02v2_v1",
+  "model_code": "M02v2",
+  "model_config_id": "M02v2_1e05a4037f",
+  "run": "repeat_03",
+  "image_id": "LA_PT-02_64m",
+  "site": "PT-02",
+  "altitude_m": "64.3",
+  "source_path": "/mnt/c/Users/gabpe/OneDrive/Documents/src/tree_boxes/drone_images/height/PT_02/PT_02_64m.JPG",
+  "source_sha256": "25f3c331564db9cc9ada0e151bbec16506b8702dd34ce245dc5c671b427c85b4",
+  "manifest_path": "/mnt/c/Users/gabpe/OneDrive/Documents/src/tree_boxes/manifests/manifest.csv",
+  "manifest_sha256": "6c4951119b6af6927ca4a8c3a9e890d02e328ad26d341589e83663211794db99",
+  "checkpoint": {
+    "model_name": "weecology/deepforest-tree",
+    "revision": "cc21436bc5d572dde8ff5f93c1e71a32f563cace",
+    "weights_path": "/home/gabpe/.cache/huggingface/hub/models--weecology--deepforest-tree/blobs/d37a7af0b5ba2754282a80d41b4c7b66e8c7149234df5bf3f41bdaf57d329fc8",
+    "model_safetensors_sha256": "d37a7af0b5ba2754282a80d41b4c7b66e8c7149234df5bf3f41bdaf57d329fc8",
+    "config_json_sha256": "521e0149f0b060237c6994a69bffdff53ce5deb3beb854dad2752a3f8dd49bc4",
+    "weights_bytes": 129049980
+  },
+  "config": {
+    "runner_version": "lowalt_pilot_v1",
+    "model_code": "M02v2",
+    "method": "DeepForest GSD-Corrected v2",
+    "deepforest_version": "2.1.0",
+    "model_name": "weecology/deepforest-tree",
+    "model_revision": "cc21436bc5d572dde8ff5f93c1e71a32f563cace",
+    "model_safetensors_sha256": "d37a7af0b5ba2754282a80d41b4c7b66e8c7149234df5bf3f41bdaf57d329fc8",
+    "inference": {
+      "patch_size": 400,
+      "patch_overlap": 0.05,
+      "iou_threshold": 0.15,
+      "score_thresh": 0.1,
+      "nms_thresh": 0.05,
+      "dataloader_strategy": "single"
+    },
+    "preprocessing": {
+      "version": "gsd_resample_v2",
+      "resampling": "PIL.Image.Resampling.LANCZOS",
+      "jpeg_quality": 95,
+      "native_gsd_cm": 1.132,
+      "native_gsd_basis": "nominal estimate from camera geometry (EXIF focal length and 35 mm equivalent) and DJI relative altitude above the takeoff point; not a measured GSD",
+      "target_gsd_cm": 10.0,
+      "padding": {
+        "version": "pad_to_patch_v1",
+        "applies_when": "resampled side < patch_size",
+        "pad_to": 400,
+        "anchor": "top-left (pad bottom/right)",
+        "pad_value": 0
+      }
+    },
+    "output_coordinates": "original-image pixels, float"
+  },
+  "started_utc": "2026-11-09T22:42:07+00:00",
+  "status": "success",
+  "original_size": [
+    8192,
+    6144
+  ],
+  "preprocessing": {
+    "preprocessing_version": "gsd_resample_v2",
+    "resampling": "PIL.Image.Resampling.LANCZOS",
+    "jpeg_quality": 95,
+    "source_path": "/mnt/c/Users/gabpe/OneDrive/Documents/src/tree_boxes/drone_images/height/PT_02/PT_02_64m.JPG",
+    "source_sha256": "25f3c331564db9cc9ada0e151bbec16506b8702dd34ce245dc5c671b427c85b4",
+    "source_mode": "RGB",
+    "output_path": "outputs/lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_03_repeat/preprocessed/PT_02_64m_gsd10cm.jpg",
+    "output_sha256": "b35584b295a442b4271985f7ead61e73bafa00d09840263e0513909b171219ca",
+    "native_gsd_cm": 1.132,
+    "target_gsd_cm": 10.0,
+    "resize_factor_exact": 0.1132,
+    "original_size": [
+      8192,
+      6144
+    ],
+    "resampled_size": [
+      927,
+      696
+    ],
+    "applied_scale_x": 0.1131591796875,
+    "applied_scale_y": 0.11328125,
+    "applied_vs_exact_relative_difference": [
+      -0.0003606034673144798,
+      0.0007177561837456992
+    ],
+    "forward_transform": "x_resampled = x_original * applied_scale_x; y_resampled = y_original * applied_scale_y",
+    "inverse_transform": "x_original = x_resampled / applied_scale_x; y_original = y_resampled / applied_scale_y"
+  },
+  "padding": null,
+  "processed_size": [
+    927,
+    696
+  ],
+  "model_input_size": [
+    927,
+    696
+  ],
+  "model_input": "image path outputs/lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_03_repeat/preprocessed/PT_02_64m_gsd10cm.jpg",
+  "environment": {
+    "python": "3.12.14",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+    "deepforest": "2.1.0",
+    "torch": "2.14.0+cu130",
+    "torch_cuda": "13.0",
+    "cudnn": 92400,
+    "cuda_available": true,
+    "gpu": "NVIDIA GeForce RTX 5070 Laptop GPU",
+    "cudnn_deterministic": false,
+    "cudnn_benchmark": false,
+    "hf_hub_offline": "1",
+    "numpy": "2.5.3",
+    "pillow": "12.3.0",
+    "pytorch-lightning": "2.6.5",
+    "huggingface-hub": "1.30.0",
+    "slidingwindow": "0.0.14",
+    "torchvision": "0.29.0"
+  },
+  "model_load_seconds": 1.102,
+  "loaded_weights": {
+    "tensors_compared": 301,
+    "all_equal": true,
+    "rcnn_transform": {
+      "min_size": [
+        800
+      ],
+      "max_size": 1333
+    },
+    "model_score_thresh": 0.1,
+    "model_nms_thresh": 0.05,
+    "detections_per_img": 300
+  },
+  "inference_seconds": 1.325,
+  "raw_detections": 183,
+  "raw_predictions_hash": "54323519c4ff0f47e689618d2de7f9a4bde9fd772db5ec0775268119e26538e9",
+  "detections": 183,
+  "predictions_hash": "54323519c4ff0f47e689618d2de7f9a4bde9fd772db5ec0775268119e26538e9",
+  "window_diagnostics": {
+    "n_windows": 6,
+    "window_sizes": [
+      [
+        400,
+        400
+      ]
+    ],
+    "max_final_boxes_centred_in_one_window": 62,
+    "model_detections_per_img_limit": 300,
+    "note": "counts are after cross-window mosaic/NMS; a value near 300 would suggest the per-window cap was reached"
+  },
+  "finished_utc": "2026-11-09T22:42:15+00:00"
+}

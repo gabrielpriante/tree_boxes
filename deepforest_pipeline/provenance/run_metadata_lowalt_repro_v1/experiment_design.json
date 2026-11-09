@@ -1,0 +1,110 @@
+{
+  "experiment_family": "lowalt_repro_v1",
+  "purpose": "test whether each deterministic DeepForest configuration reproduces identical detections over 10 repeated executions on the two approved pilot images",
+  "runner": "scripts/run_deepforest_lowalt_v1.py (unchanged inference path and configuration)",
+  "combinations": [
+    {
+      "model": "M01",
+      "image_id": "LA_PT-R1_27m",
+      "experiment_id": "lowalt_repro_ptr1_27m_m01_v1",
+      "config_id": "M01_9c192941f5",
+      "native_gsd_cm": null,
+      "target_gsd_cm": null,
+      "pilot_experiment_id": "lowalt_pilot_ptr1_27m_m01_v1"
+    },
+    {
+      "model": "M01",
+      "image_id": "LA_PT-02_64m",
+      "experiment_id": "lowalt_repro_pt02_64m_m01_v1",
+      "config_id": "M01_9c192941f5",
+      "native_gsd_cm": null,
+      "target_gsd_cm": null,
+      "pilot_experiment_id": "lowalt_pilot_pt02_64m_m01_v1"
+    },
+    {
+      "model": "M02v2",
+      "image_id": "LA_PT-R1_27m",
+      "experiment_id": "lowalt_repro_ptr1_27m_m02v2_v1",
+      "config_id": "M02v2_b25eccbcc7",
+      "native_gsd_cm": 0.472,
+      "target_gsd_cm": 10.0,
+      "pilot_experiment_id": "lowalt_pilot_ptr1_27m_m02_v2"
+    },
+    {
+      "model": "M02v2",
+      "image_id": "LA_PT-02_64m",
+      "experiment_id": "lowalt_repro_pt02_64m_m02v2_v1",
+      "config_id": "M02v2_1e05a4037f",
+      "native_gsd_cm": 1.132,
+      "target_gsd_cm": 10.0,
+      "pilot_experiment_id": "lowalt_pilot_pt02_64m_m02_v2"
+    }
+  ],
+  "runs_per_combination": 10,
+  "total_runs": 40,
+  "order": "interleaved by repetition: repeat_01 of all four combinations, then repeat_02, ...",
+  "independence": "each run is a separate Python process: fresh model load from the pinned checkpoint (hash and tensor-equality verified per run), fresh CUDA context; M02v2 re-resamples the image each run",
+  "offline": "HF_HUB_OFFLINE=1; pinned revision cc21436bc5d572dde8ff5f93c1e71a32f563cace",
+  "manifest": "/mnt/c/Users/gabpe/OneDrive/Documents/src/tree_boxes/manifests/manifest.csv",
+  "output_root": "outputs/lowalt_repro_v1",
+  "prior_pilot_runs": {
+    "lowalt_repro_ptr1_27m_m01_v1": {
+      "primary": {
+        "run_dir": "outputs/lowalt_pilot_v1/m01_native/lowalt_pilot_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_01_primary",
+        "detections": 4836,
+        "predictions_hash": "4cc3e6ae994645bdd6a3811f1c5e5fa841346efd7b21332c58f47439f93c0f12",
+        "raw_predictions_hash": "4cc3e6ae994645bdd6a3811f1c5e5fa841346efd7b21332c58f47439f93c0f12"
+      },
+      "verification": {
+        "run_dir": "outputs/lowalt_pilot_v1/m01_native/lowalt_pilot_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_02_verification",
+        "detections": 4836,
+        "predictions_hash": "4cc3e6ae994645bdd6a3811f1c5e5fa841346efd7b21332c58f47439f93c0f12",
+        "raw_predictions_hash": "4cc3e6ae994645bdd6a3811f1c5e5fa841346efd7b21332c58f47439f93c0f12"
+      }
+    },
+    "lowalt_repro_pt02_64m_m01_v1": {
+      "primary": {
+        "run_dir": "outputs/lowalt_pilot_v1/m01_native/lowalt_pilot_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_01_primary",
+        "detections": 6320,
+        "predictions_hash": "e5fabee099089ce0c88a740662f1925089299302a5089094386f3f0e542044bd",
+        "raw_predictions_hash": "e5fabee099089ce0c88a740662f1925089299302a5089094386f3f0e542044bd"
+      },
+      "verification": {
+        "run_dir": "outputs/lowalt_pilot_v1/m01_native/lowalt_pilot_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_02_verification",
+        "detections": 6320,
+        "predictions_hash": "e5fabee099089ce0c88a740662f1925089299302a5089094386f3f0e542044bd",
+        "raw_predictions_hash": "e5fabee099089ce0c88a740662f1925089299302a5089094386f3f0e542044bd"
+      }
+    },
+    "lowalt_repro_ptr1_27m_m02v2_v1": {
+      "primary": {
+        "run_dir": "outputs/lowalt_pilot_v1/m02v2_gsd/lowalt_pilot_ptr1_27m_m02_v2/M02v2_b25eccbcc7/LA_PT-R1_27m/run_01_primary",
+        "detections": 20,
+        "predictions_hash": "a960249de405f1ba6d58d3a1cc2b796721bf7dc1093ef4abd915e5f73ae7f7e6",
+        "raw_predictions_hash": "a960249de405f1ba6d58d3a1cc2b796721bf7dc1093ef4abd915e5f73ae7f7e6"
+      },
+      "verification": {
+        "run_dir": "outputs/lowalt_pilot_v1/m02v2_gsd/lowalt_pilot_ptr1_27m_m02_v2/M02v2_b25eccbcc7/LA_PT-R1_27m/run_02_verification",
+        "detections": 20,
+        "predictions_hash": "a960249de405f1ba6d58d3a1cc2b796721bf7dc1093ef4abd915e5f73ae7f7e6",
+        "raw_predictions_hash": "a960249de405f1ba6d58d3a1cc2b796721bf7dc1093ef4abd915e5f73ae7f7e6"
+      }
+    },
+    "lowalt_repro_pt02_64m_m02v2_v1": {
+      "primary": {
+        "run_dir": "outputs/lowalt_pilot_v1/m02v2_gsd/lowalt_pilot_pt02_64m_m02_v2/M02v2_1e05a4037f/LA_PT-02_64m/run_01_primary",
+        "detections": 183,
+        "predictions_hash": "54323519c4ff0f47e689618d2de7f9a4bde9fd772db5ec0775268119e26538e9",
+        "raw_predictions_hash": "54323519c4ff0f47e689618d2de7f9a4bde9fd772db5ec0775268119e26538e9"
+      },
+      "verification": {
+        "run_dir": "outputs/lowalt_pilot_v1/m02v2_gsd/lowalt_pilot_pt02_64m_m02_v2/M02v2_1e05a4037f/LA_PT-02_64m/run_02_verification",
+        "detections": 183,
+        "predictions_hash": "54323519c4ff0f47e689618d2de7f9a4bde9fd772db5ec0775268119e26538e9",
+        "raw_predictions_hash": "54323519c4ff0f47e689618d2de7f9a4bde9fd772db5ec0775268119e26538e9"
+      }
+    }
+  },
+  "interpretation": "repeated executions of deterministic algorithms; not independent statistical observations and not comparable as a sample size to the stochastic LLM trials",
+  "prepared_utc": "2026-11-09T22:38:32+00:00"
+}

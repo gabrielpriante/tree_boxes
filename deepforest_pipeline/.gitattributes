@@ -1,0 +1,3 @@
+# Store every file in this folder byte for byte (no line-ending conversion), so the SHA-256 values in
+# provenance/ stay valid on Windows and Linux checkouts.
+* -text
