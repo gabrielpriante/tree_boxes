@@ -664,7 +664,7 @@ def run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image, run_dir,
         if result.raw is not None:
             write_new_json(adir / "response_raw.json", result.raw)
             record["files"]["response_raw"] = "response_raw.json"
-        if result.usage and result.usage_complete:
+        if result.usage:
             # The provider reported usage for the failed response: charge that, not a bound.
             record.update(possibly_billed=True, estimated_cost_usd=adapter.cost_usd(result.usage),
                           cost_basis="actual_usage (error response)")
@@ -673,13 +673,8 @@ def run_attempt(adapter, cfg, cfg_id, experiment_id, row, trial, image, run_dir,
                           cost_basis="worst_case_bound (failed after generation started)")
         return finish("error")
 
-    if result.usage_complete:
-        record["estimated_cost_usd"] = adapter.cost_usd(result.usage)
-        record["cost_basis"] = "actual_usage"
-    else:
-        # The provider did not report enough usage to price the response: book the bound, never a guess.
-        record.update(possibly_billed=True, estimated_cost_usd=worst_case,
-                      cost_basis="worst_case_bound (provider usage incomplete)")
+    record["estimated_cost_usd"] = adapter.cost_usd(result.usage)
+    record["cost_basis"] = "actual_usage"
     write_new_json(adir / "response_raw.json", result.raw)
     record["files"]["response_raw"] = "response_raw.json"
 
@@ -743,37 +738,6 @@ def prepare_image(row: dict, adapter=None) -> dict:
     }
     return {"original": original, "jpeg": jpeg, "prompt": prompt,
             "prompt_sha256": sha256_text(prompt), "meta": meta}
-
-
-REFERENCE_INPUT_FIELDS = ("file_sha256", "upload_sha256", "upload_bytes", "upload_width", "upload_height",
-                          "upload_jpeg_quality")
-
-
-def reference_input_check(image: dict, image_id: str, reference_dir: Path, models) -> dict:
-    """Require the exact source hash, submitted JPEG bytes and prompt that the named models' successful trials
-    recorded for this image (read-only). Used by M10 so it receives M08/M09's input, byte for byte."""
-    recs = []
-    for p in sorted(Path(reference_dir).glob(f"*/*/{image_id}/trial_*/attempt_*/record.json")):
-        r = read_json(p)
-        if r.get("model_code") in models and r.get("status") == "success":
-            recs.append((p, r))
-    if not recs:
-        raise ConsistencyError(f"{image_id}: no successful {'/'.join(models)} records in {reference_dir} to "
-                               "verify the submitted input against")
-    mine = {**{k: image["meta"][k] for k in REFERENCE_INPUT_FIELDS}, "prompt_sha256": image["prompt_sha256"]}
-    for p, r in recs:
-        theirs = {**{k: (r.get("image") or {}).get(k) for k in REFERENCE_INPUT_FIELDS},
-                  "prompt_sha256": r.get("prompt_sha256")}
-        diff = sorted(k for k in mine if theirs[k] != mine[k])
-        if diff:
-            raise ConsistencyError(f"{image_id}: {', '.join(diff)} differ from {p}; the input would not be "
-                                   "identical to the earlier models'")
-    by_model = {}
-    for _, r in recs:
-        by_model[r["model_code"]] = by_model.get(r["model_code"], 0) + 1
-    return {"reference_models": list(models), "records_compared": len(recs), "records_by_model": by_model,
-            "experiments": sorted({r["experiment_id"] for _, r in recs}), "identical_fields": sorted(mine),
-            "upload_sha256": mine["upload_sha256"], "prompt_sha256": mine["prompt_sha256"]}
 
 
 def check_consistency(image: dict, attempts: list, image_id: str) -> None:
@@ -914,12 +878,8 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
                   max_attempts: int = 2, allow_unknown_metadata: bool = False,
                   manifest_path: Path | None = None, ledger_path: Path | None = None,
                   pause_after: int = DEFAULT_PAUSE_AFTER, acknowledge_paused: bool = False,
-                  round_robin: bool = False, reference_dir: Path | None = None, log=print) -> dict:
-    """reference_dir: where the records of `adapter.input_reference_models` (if any) are read from to verify
-    that this model receives byte-identical input (default: output_dir). Read-only."""
+                  round_robin: bool = False, log=print) -> dict:
     cfg = adapter.config()
-    reference_models = tuple(getattr(adapter, "input_reference_models", ()) or ())
-    reference_dir = Path(reference_dir) if reference_dir is not None else output_dir
     cfg_id = config_id(cfg)
     exp_dir = output_dir / experiment_id
     run_dir = exp_dir / cfg_id
@@ -1009,30 +969,6 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
     if rows:
         check_path_lengths(run_dir, [r["image_id"] for r in rows])
 
-    if reference_models:
-        log(f"\nInput equivalence with {'/'.join(reference_models)} (source file, submitted JPEG and prompt; "
-            f"records read from {reference_dir}):")
-        report["input_checks"] = {}
-        for row, _, ready in plan:
-            if not ready:
-                continue
-            image = prepare_image(row, adapter)
-            try:
-                chk = reference_input_check(image, row["image_id"], reference_dir, reference_models)
-            except ConsistencyError as e:
-                report["input_checks"][row["image_id"]] = {"error": str(e)}
-                log(f"  {row['image_id']}: FAILED: {e}")
-                continue
-            report["input_checks"][row["image_id"]] = chk
-            m = image["meta"]
-            log(f"  {row['image_id']}: identical to {chk['records_compared']} records "
-                f"({', '.join(f'{k} {v}' for k, v in sorted(chk['records_by_model'].items()))}); "
-                f"JPEG {m['upload_width']}x{m['upload_height']}, {m['upload_bytes']} bytes, "
-                f"sha256 {m['upload_sha256'][:12]}..; prompt sha256 {image['prompt_sha256'][:12]}..")
-        failed = [i for i, c in report["input_checks"].items() if "error" in c]
-        if failed and not dry_run:
-            raise SystemExit(f"Input differs from the reference models for {', '.join(failed)}; nothing was sent.")
-
     if dry_run:
         log("\nDry run: no API requests made, nothing written.")
         return report
@@ -1085,10 +1021,6 @@ def run_benchmark(rows, adapter, output_dir: Path, experiment_id: str, runs: int
             if image_id not in images:
                 image = images[image_id] = prepare_image(row, adapter)
                 check_consistency(image, image_attempts(run_dir, image_id), image_id)
-                if reference_models:
-                    # Recorded in every attempt's request.json and record.json (image block).
-                    image["meta"]["reference_input_check"] = reference_input_check(
-                        image, image_id, reference_dir, reference_models)
                 image["image_tokens"] = adapter.image_tokens(image["meta"]["upload_width"],
                                                              image["meta"]["upload_height"])
                 log(f"\n{image_id}: upload {image['meta']['upload_width']}x{image['meta']['upload_height']} "
@@ -1183,9 +1115,8 @@ def main(argv=None):
     ap.add_argument("--output-dir", type=Path,
                     help=f"Default {PRODUCTION_OUTPUT_DIR.name}/ (or {MOCK_OUTPUT_DIR.name}/ with --mock)")
     ap.add_argument("--experiment-id", default="tree_count_consistency_v1")
-    ap.add_argument("--model", default="M08", choices=("M08", "M09", "M10"),
-                    help="M08 = Claude Opus 5.5 (Anthropic); M09 = GPT-6.1 Sol (OpenAI); "
-                         "M10 = Gemini 3.1 Pro Preview (Google)")
+    ap.add_argument("--model", default="M08", choices=("M08", "M09"),
+                    help="M08 = Claude Opus 5.5 (Anthropic); M09 = GPT-6.1 Sol (OpenAI)")
     ap.add_argument("--max-attempts", type=int, default=2,
                     help="Attempts per trial per session after API errors (default 2)")
     ap.add_argument("--pause-after", type=int, default=DEFAULT_PAUSE_AFTER,
@@ -1236,9 +1167,7 @@ def main(argv=None):
                            allow_unknown_metadata=args.allow_unknown_metadata,
                            manifest_path=args.manifest, ledger_path=ledger_path,
                            pause_after=args.pause_after, acknowledge_paused=args.acknowledge_pause,
-                           round_robin=args.round_robin,
-                           # Frozen production records are the reference even for --mock rehearsals (read-only).
-                           reference_dir=PRODUCTION_OUTPUT_DIR)
+                           round_robin=args.round_robin)
     if report.get("stopped") == "interrupted by user":
         sys.exit(130)
 
