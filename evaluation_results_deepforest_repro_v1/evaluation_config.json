@@ -1,0 +1,519 @@
+{
+  "analysis": "DeepForest repeated-execution reproducibility (lowalt_repro_v1)",
+  "algorithm_version": "1.0.0",
+  "iou_thresholds": [
+    "0.50",
+    "0.75",
+    "1.00"
+  ],
+  "identity_checks": [
+    "SHA-256 of predictions_raw.csv (raw order)",
+    "SHA-256 of detections.json (canonical order)",
+    "exact float equality of canonically sorted boxes and scores",
+    "detection counts",
+    "exact-IoU one-to-one pairwise agreement for every run pair"
+  ],
+  "interpretation": "Repeated executions of a deterministic program on one machine and software stack: not independent observations, and not comparable as a sample size to the 10 independent stochastic LLM trials.",
+  "inputs": {
+    "runs_root": "..\\urban-tree-vision-baselines\\outputs\\lowalt_repro_v1",
+    "pilot_root": "C:\\Users\\gabpe\\OneDrive\\Documents\\src\\urban-tree-vision-baselines\\outputs\\lowalt_pilot_v1",
+    "llm_evaluation": "C:\\Users\\gabpe\\OneDrive\\Documents\\src\\tree_boxes\\evaluation_results",
+    "files": [
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_01_repeat/run_record.json",
+        "sha256": "94e1b7f3da1f01f63badb112f5a77bc7069c949eb0e61f0a7c86e795cdaa03ff"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_01_repeat/detections.json",
+        "sha256": "bb84ef38e816b4a216a42e79a922d9fa17b5533aa5674c68f66035aeaac12db8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_01_repeat/predictions_raw.csv",
+        "sha256": "0e1aa374407f006a5fa49ac41cbc507d07012f5d99e07e3299772b6f95d49fb8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_02_repeat/run_record.json",
+        "sha256": "1b0a7328746aefe8d269613887422db6b11b55d13c3715fc7f6262367945db7c"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_02_repeat/detections.json",
+        "sha256": "bb84ef38e816b4a216a42e79a922d9fa17b5533aa5674c68f66035aeaac12db8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_02_repeat/predictions_raw.csv",
+        "sha256": "0e1aa374407f006a5fa49ac41cbc507d07012f5d99e07e3299772b6f95d49fb8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_03_repeat/run_record.json",
+        "sha256": "57cc48abbc3d4908722acc0f13e97e7c00325d12d34dc0f93b7aea8c1e4181c4"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_03_repeat/detections.json",
+        "sha256": "bb84ef38e816b4a216a42e79a922d9fa17b5533aa5674c68f66035aeaac12db8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_03_repeat/predictions_raw.csv",
+        "sha256": "0e1aa374407f006a5fa49ac41cbc507d07012f5d99e07e3299772b6f95d49fb8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_04_repeat/run_record.json",
+        "sha256": "8c303c2aa7ca3dd34e1d33d38afb71b4fe5d6f1390bdef757db95c48c9748d5e"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_04_repeat/detections.json",
+        "sha256": "bb84ef38e816b4a216a42e79a922d9fa17b5533aa5674c68f66035aeaac12db8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_04_repeat/predictions_raw.csv",
+        "sha256": "0e1aa374407f006a5fa49ac41cbc507d07012f5d99e07e3299772b6f95d49fb8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_05_repeat/run_record.json",
+        "sha256": "08b75b1fa7c4a65506d6bda653ed7506db4bd75c3b2ef0bb4eddef54d20bb370"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_05_repeat/detections.json",
+        "sha256": "bb84ef38e816b4a216a42e79a922d9fa17b5533aa5674c68f66035aeaac12db8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_05_repeat/predictions_raw.csv",
+        "sha256": "0e1aa374407f006a5fa49ac41cbc507d07012f5d99e07e3299772b6f95d49fb8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_06_repeat/run_record.json",
+        "sha256": "c6b77f95f126ad68f16cb54758115f4c7b0694f2148960217e3b36dd7dde9bbd"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_06_repeat/detections.json",
+        "sha256": "bb84ef38e816b4a216a42e79a922d9fa17b5533aa5674c68f66035aeaac12db8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_06_repeat/predictions_raw.csv",
+        "sha256": "0e1aa374407f006a5fa49ac41cbc507d07012f5d99e07e3299772b6f95d49fb8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_07_repeat/run_record.json",
+        "sha256": "67e78ce8045e9e0f5a036f02a22118ccfd41740fc6d6fa9e5e629f87b0f19679"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_07_repeat/detections.json",
+        "sha256": "bb84ef38e816b4a216a42e79a922d9fa17b5533aa5674c68f66035aeaac12db8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_07_repeat/predictions_raw.csv",
+        "sha256": "0e1aa374407f006a5fa49ac41cbc507d07012f5d99e07e3299772b6f95d49fb8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_08_repeat/run_record.json",
+        "sha256": "3240c6c5de5337b29c8e11d53761be55f71e24990b22f95d6028081068694dd3"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_08_repeat/detections.json",
+        "sha256": "bb84ef38e816b4a216a42e79a922d9fa17b5533aa5674c68f66035aeaac12db8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_08_repeat/predictions_raw.csv",
+        "sha256": "0e1aa374407f006a5fa49ac41cbc507d07012f5d99e07e3299772b6f95d49fb8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_09_repeat/run_record.json",
+        "sha256": "5a289f0784d43bcda5881851e6e366f3255dd67502fd1dae46b64c03466d235b"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_09_repeat/detections.json",
+        "sha256": "bb84ef38e816b4a216a42e79a922d9fa17b5533aa5674c68f66035aeaac12db8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_09_repeat/predictions_raw.csv",
+        "sha256": "0e1aa374407f006a5fa49ac41cbc507d07012f5d99e07e3299772b6f95d49fb8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_10_repeat/run_record.json",
+        "sha256": "dabe4496d51765d41abe4d7db00a130e29b0beb531dc085fd83a3619847fae6f"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_10_repeat/detections.json",
+        "sha256": "bb84ef38e816b4a216a42e79a922d9fa17b5533aa5674c68f66035aeaac12db8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_pt02_64m_m01_v1/M01_9c192941f5/LA_PT-02_64m/run_10_repeat/predictions_raw.csv",
+        "sha256": "0e1aa374407f006a5fa49ac41cbc507d07012f5d99e07e3299772b6f95d49fb8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_01_repeat/run_record.json",
+        "sha256": "063a29a8b20000f90ef013c7342c1e6ba61de3c9c3933b2ff8fb16a46ab9ce3d"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_01_repeat/detections.json",
+        "sha256": "f6120fcafdc1668ea905206815a0008a3cff11708e970d9973a252c532ab1e0d"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_01_repeat/predictions_raw.csv",
+        "sha256": "da4799b655420569be358f3c7a7c7b543032654f007fca0db372adb4c9705158"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_02_repeat/run_record.json",
+        "sha256": "80690e5f282341f9f86d794f8b12abd980d7541c5f1c9bba4e5679d1639eb6a8"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_02_repeat/detections.json",
+        "sha256": "f6120fcafdc1668ea905206815a0008a3cff11708e970d9973a252c532ab1e0d"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_02_repeat/predictions_raw.csv",
+        "sha256": "da4799b655420569be358f3c7a7c7b543032654f007fca0db372adb4c9705158"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_03_repeat/run_record.json",
+        "sha256": "9d5230d2de0f38ced188c6e6f83dbd5c688c718e0541167b475b4a138398cb7d"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_03_repeat/detections.json",
+        "sha256": "f6120fcafdc1668ea905206815a0008a3cff11708e970d9973a252c532ab1e0d"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_03_repeat/predictions_raw.csv",
+        "sha256": "da4799b655420569be358f3c7a7c7b543032654f007fca0db372adb4c9705158"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_04_repeat/run_record.json",
+        "sha256": "341b1e3088ae7dd143b3e86403565d7ce054062f14949343dbed616213340ef4"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_04_repeat/detections.json",
+        "sha256": "f6120fcafdc1668ea905206815a0008a3cff11708e970d9973a252c532ab1e0d"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_04_repeat/predictions_raw.csv",
+        "sha256": "da4799b655420569be358f3c7a7c7b543032654f007fca0db372adb4c9705158"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_05_repeat/run_record.json",
+        "sha256": "2b733ba931439531739a831bf24344281f7f92faafc05c2f0b7ad6d94867e6dc"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_05_repeat/detections.json",
+        "sha256": "f6120fcafdc1668ea905206815a0008a3cff11708e970d9973a252c532ab1e0d"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_05_repeat/predictions_raw.csv",
+        "sha256": "da4799b655420569be358f3c7a7c7b543032654f007fca0db372adb4c9705158"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_06_repeat/run_record.json",
+        "sha256": "f5f647e7f2495d77c97c128707c0a800365f5a518375c32f58c8303ef8bddf89"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_06_repeat/detections.json",
+        "sha256": "f6120fcafdc1668ea905206815a0008a3cff11708e970d9973a252c532ab1e0d"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_06_repeat/predictions_raw.csv",
+        "sha256": "da4799b655420569be358f3c7a7c7b543032654f007fca0db372adb4c9705158"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_07_repeat/run_record.json",
+        "sha256": "37110a0dc17c7d7d24e47ff9d19444c407847ec244e6334c4349ab8b23a31339"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_07_repeat/detections.json",
+        "sha256": "f6120fcafdc1668ea905206815a0008a3cff11708e970d9973a252c532ab1e0d"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_07_repeat/predictions_raw.csv",
+        "sha256": "da4799b655420569be358f3c7a7c7b543032654f007fca0db372adb4c9705158"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_08_repeat/run_record.json",
+        "sha256": "8d26fa9499fee95f7b59d89ebf6b15cca8c81153d9ef5220e4e1003fb3f65635"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_08_repeat/detections.json",
+        "sha256": "f6120fcafdc1668ea905206815a0008a3cff11708e970d9973a252c532ab1e0d"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_08_repeat/predictions_raw.csv",
+        "sha256": "da4799b655420569be358f3c7a7c7b543032654f007fca0db372adb4c9705158"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_09_repeat/run_record.json",
+        "sha256": "0448d154ec4cb80c977d44a2897f746a01b1ffb7b6c17326d515ba27da2a5ac0"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_09_repeat/detections.json",
+        "sha256": "f6120fcafdc1668ea905206815a0008a3cff11708e970d9973a252c532ab1e0d"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_09_repeat/predictions_raw.csv",
+        "sha256": "da4799b655420569be358f3c7a7c7b543032654f007fca0db372adb4c9705158"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_10_repeat/run_record.json",
+        "sha256": "106f98d555531a149157c51c850d8e60a814e1b63c89a72bd2a12e60e56886f9"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_10_repeat/detections.json",
+        "sha256": "f6120fcafdc1668ea905206815a0008a3cff11708e970d9973a252c532ab1e0d"
+      },
+      {
+        "path": "lowalt_repro_v1/m01_native/lowalt_repro_ptr1_27m_m01_v1/M01_9c192941f5/LA_PT-R1_27m/run_10_repeat/predictions_raw.csv",
+        "sha256": "da4799b655420569be358f3c7a7c7b543032654f007fca0db372adb4c9705158"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_01_repeat/run_record.json",
+        "sha256": "c23b97f299f38342cabde74fbd08f9b45510c3fddadf888e07c966cc527fabca"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_01_repeat/detections.json",
+        "sha256": "b63424a8a399f91a5b4d82b56cc1b9333684761753925f98164fb40c41d20e4e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_01_repeat/predictions_raw.csv",
+        "sha256": "cfd091a32e95abae9e371ccc64bf165135aaa5c12235a02146c4e9016f1b1271"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_02_repeat/run_record.json",
+        "sha256": "595ab496aa791cde4dff44cbcc092f2f1b1a0d7c60e385ce0545e75fea99e921"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_02_repeat/detections.json",
+        "sha256": "b63424a8a399f91a5b4d82b56cc1b9333684761753925f98164fb40c41d20e4e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_02_repeat/predictions_raw.csv",
+        "sha256": "cfd091a32e95abae9e371ccc64bf165135aaa5c12235a02146c4e9016f1b1271"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_03_repeat/run_record.json",
+        "sha256": "4c31939bb301e5de269aec06e808d7b3b7cbb4667fbc00916655716af8f223bb"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_03_repeat/detections.json",
+        "sha256": "b63424a8a399f91a5b4d82b56cc1b9333684761753925f98164fb40c41d20e4e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_03_repeat/predictions_raw.csv",
+        "sha256": "cfd091a32e95abae9e371ccc64bf165135aaa5c12235a02146c4e9016f1b1271"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_04_repeat/run_record.json",
+        "sha256": "df954ae04a2a91325a724f6863f495cbb27ab895a3756f5585bea6e8cd31d0b6"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_04_repeat/detections.json",
+        "sha256": "b63424a8a399f91a5b4d82b56cc1b9333684761753925f98164fb40c41d20e4e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_04_repeat/predictions_raw.csv",
+        "sha256": "cfd091a32e95abae9e371ccc64bf165135aaa5c12235a02146c4e9016f1b1271"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_05_repeat/run_record.json",
+        "sha256": "856e6cd73b70581ff0d7f9aed7ca37b2c5cadefbad6c44d5a47cdb5351ebda75"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_05_repeat/detections.json",
+        "sha256": "b63424a8a399f91a5b4d82b56cc1b9333684761753925f98164fb40c41d20e4e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_05_repeat/predictions_raw.csv",
+        "sha256": "cfd091a32e95abae9e371ccc64bf165135aaa5c12235a02146c4e9016f1b1271"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_06_repeat/run_record.json",
+        "sha256": "cef0dbde854a1eeb57b393b123582c74050ed50569bc2f41609f838dc9dcc15e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_06_repeat/detections.json",
+        "sha256": "b63424a8a399f91a5b4d82b56cc1b9333684761753925f98164fb40c41d20e4e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_06_repeat/predictions_raw.csv",
+        "sha256": "cfd091a32e95abae9e371ccc64bf165135aaa5c12235a02146c4e9016f1b1271"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_07_repeat/run_record.json",
+        "sha256": "7cb635c9d4c7beac0748c8996d3b861e528a6f689178637db0d39c3423f65a03"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_07_repeat/detections.json",
+        "sha256": "b63424a8a399f91a5b4d82b56cc1b9333684761753925f98164fb40c41d20e4e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_07_repeat/predictions_raw.csv",
+        "sha256": "cfd091a32e95abae9e371ccc64bf165135aaa5c12235a02146c4e9016f1b1271"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_08_repeat/run_record.json",
+        "sha256": "8e4ce14fb7d0dba0469a32310e5b3036cb1d5561c2f91ba050df25bd8182e9c3"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_08_repeat/detections.json",
+        "sha256": "b63424a8a399f91a5b4d82b56cc1b9333684761753925f98164fb40c41d20e4e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_08_repeat/predictions_raw.csv",
+        "sha256": "cfd091a32e95abae9e371ccc64bf165135aaa5c12235a02146c4e9016f1b1271"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_09_repeat/run_record.json",
+        "sha256": "47dcc7344c494eba4a6af1904276c82cde90c059ff53611401789fa0edbf76a1"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_09_repeat/detections.json",
+        "sha256": "b63424a8a399f91a5b4d82b56cc1b9333684761753925f98164fb40c41d20e4e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_09_repeat/predictions_raw.csv",
+        "sha256": "cfd091a32e95abae9e371ccc64bf165135aaa5c12235a02146c4e9016f1b1271"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_10_repeat/run_record.json",
+        "sha256": "2ac27727b0fe9b534f6d80cd19798a34f0749df2c8f10f76e355eecac0baf1a8"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_10_repeat/detections.json",
+        "sha256": "b63424a8a399f91a5b4d82b56cc1b9333684761753925f98164fb40c41d20e4e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_pt02_64m_m02v2_v1/M02v2_1e05a4037f/LA_PT-02_64m/run_10_repeat/predictions_raw.csv",
+        "sha256": "cfd091a32e95abae9e371ccc64bf165135aaa5c12235a02146c4e9016f1b1271"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_01_repeat/run_record.json",
+        "sha256": "3015cba4ee30007988845fc3a42581d06180bf6cec61f5bf10b21b83900d5b2c"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_01_repeat/detections.json",
+        "sha256": "e64c0148ac4cb931b29cc7ca6a97ef57dee14731adb156e91d0e3f2ec23e1d72"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_01_repeat/predictions_raw.csv",
+        "sha256": "28c24a601e2b823d92856b7135a7b42f79bf5e6a80714580304da8e701c34f5e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_02_repeat/run_record.json",
+        "sha256": "77c6a69ef5119d10ea80f18970f7e1095aec19770c39bc0ca7a9ebdc473f1a0f"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_02_repeat/detections.json",
+        "sha256": "e64c0148ac4cb931b29cc7ca6a97ef57dee14731adb156e91d0e3f2ec23e1d72"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_02_repeat/predictions_raw.csv",
+        "sha256": "28c24a601e2b823d92856b7135a7b42f79bf5e6a80714580304da8e701c34f5e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_03_repeat/run_record.json",
+        "sha256": "3f104b41e30c9f943f8be39adf61c45dd24ad75e18019b2483e48a3433a99818"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_03_repeat/detections.json",
+        "sha256": "e64c0148ac4cb931b29cc7ca6a97ef57dee14731adb156e91d0e3f2ec23e1d72"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_03_repeat/predictions_raw.csv",
+        "sha256": "28c24a601e2b823d92856b7135a7b42f79bf5e6a80714580304da8e701c34f5e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_04_repeat/run_record.json",
+        "sha256": "d599ea15227b0b85f8f9a6fe54294b45da5e7bc0b7a8a2c414f191f5914b622a"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_04_repeat/detections.json",
+        "sha256": "e64c0148ac4cb931b29cc7ca6a97ef57dee14731adb156e91d0e3f2ec23e1d72"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_04_repeat/predictions_raw.csv",
+        "sha256": "28c24a601e2b823d92856b7135a7b42f79bf5e6a80714580304da8e701c34f5e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_05_repeat/run_record.json",
+        "sha256": "380b3d6d982fe149733818f081a5cc6dc5899219a38a7d1afafe872974f3c596"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_05_repeat/detections.json",
+        "sha256": "e64c0148ac4cb931b29cc7ca6a97ef57dee14731adb156e91d0e3f2ec23e1d72"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_05_repeat/predictions_raw.csv",
+        "sha256": "28c24a601e2b823d92856b7135a7b42f79bf5e6a80714580304da8e701c34f5e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_06_repeat/run_record.json",
+        "sha256": "57ebfb347fbf83d738eb1449b1e9f97d9a89cddc4aa4ee32f74ae16d6961ab20"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_06_repeat/detections.json",
+        "sha256": "e64c0148ac4cb931b29cc7ca6a97ef57dee14731adb156e91d0e3f2ec23e1d72"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_06_repeat/predictions_raw.csv",
+        "sha256": "28c24a601e2b823d92856b7135a7b42f79bf5e6a80714580304da8e701c34f5e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_07_repeat/run_record.json",
+        "sha256": "13f43558fc879bbb6d967539c521c3093efb3cfe67ff1ec356a2014e74fb19d5"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_07_repeat/detections.json",
+        "sha256": "e64c0148ac4cb931b29cc7ca6a97ef57dee14731adb156e91d0e3f2ec23e1d72"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_07_repeat/predictions_raw.csv",
+        "sha256": "28c24a601e2b823d92856b7135a7b42f79bf5e6a80714580304da8e701c34f5e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_08_repeat/run_record.json",
+        "sha256": "85bb9527af7789ba06215947c00ce4f18ffe9865b00f113202459a1b6d9d94b1"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_08_repeat/detections.json",
+        "sha256": "e64c0148ac4cb931b29cc7ca6a97ef57dee14731adb156e91d0e3f2ec23e1d72"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_08_repeat/predictions_raw.csv",
+        "sha256": "28c24a601e2b823d92856b7135a7b42f79bf5e6a80714580304da8e701c34f5e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_09_repeat/run_record.json",
+        "sha256": "2e207c17385e9ff33e04a3b0744773409c764f65fee4610c0f744a8a84a3c854"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_09_repeat/detections.json",
+        "sha256": "e64c0148ac4cb931b29cc7ca6a97ef57dee14731adb156e91d0e3f2ec23e1d72"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_09_repeat/predictions_raw.csv",
+        "sha256": "28c24a601e2b823d92856b7135a7b42f79bf5e6a80714580304da8e701c34f5e"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_10_repeat/run_record.json",
+        "sha256": "4fafc0eea78abe2e42d44e434f886e969058185bc77b71596168b8e08ea1fd38"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_10_repeat/detections.json",
+        "sha256": "e64c0148ac4cb931b29cc7ca6a97ef57dee14731adb156e91d0e3f2ec23e1d72"
+      },
+      {
+        "path": "lowalt_repro_v1/m02v2_gsd/lowalt_repro_ptr1_27m_m02v2_v1/M02v2_b25eccbcc7/LA_PT-R1_27m/run_10_repeat/predictions_raw.csv",
+        "sha256": "28c24a601e2b823d92856b7135a7b42f79bf5e6a80714580304da8e701c34f5e"
+      }
+    ]
+  },
+  "software": {
+    "python": "3.13.12",
+    "numpy": "2.4.3",
+    "scipy": "1.17.1",
+    "matplotlib": "3.10.8",
+    "pillow": "12.1.1"
+  },
+  "code": {
+    "commit": "d28d02ccfe1c59083c0e076a1c4cee0a002e61e2",
+    "evaluation_code_uncommitted": false
+  },
+  "generated_utc": "2026-11-09T22:56:10+00:00",
+  "command": "evaluate_deepforest_repeatability.py --runs-root ..\\urban-tree-vision-baselines\\outputs\\lowalt_repro_v1 --output-dir evaluation_results_deepforest_repro_v1",
+  "inference_run": false,
+  "api_requests_made": 0
+}
