@@ -365,6 +365,14 @@ DeepForest is not run by `benchmark_runner.py`. The pilot runs (5 November 2026)
 The import refuses to overwrite and cross-checks the image hash against the manifest and every M08/M09 record.
 See `EVALUATION.md` for how single-output, pixel-native records are evaluated.
 
+**Repeated executions (9 November 2026, completed).** Each configuration was executed 10 more times on both images
+(40 runs, `lowalt_repro_v1`). Every run was identical to the others and to the pilot. See `EVALUATION.md` and
+`evaluation_results_deepforest_repro_v1/`.
+
+**Code and provenance in this repository.** The exact scripts, tests and registry documents were copied from the
+`urban-tree-vision-baselines` working copy into [deepforest_pipeline/](deepforest_pipeline/README.md), together with
+all run records and configurations, the checksums of the raw outputs archived outside Git, and the environment.
+
 ## Evaluation
 
 Offline consistency evaluation, human review and the across-altitude design are documented in

@@ -1,12 +1,19 @@
 # Research Progress: Repeated-Observation Benchmark of Computer Vision for Urban Trees
 
-*Frontline Labs · Park Triangle urban-tree benchmark · progress report as of 5 November 2026*
+*Frontline Labs · Park Triangle urban-tree benchmark · final record of the experimental phase, 9 November 2026*
+
+**The experimental phase is complete.** No further inference or imagery is planned for the present paper. Its scope
+is four configurations (M01, M02v2, M08, M09) on two fixed images. Reviewers should start with
+[REVIEW_GUIDE.md](REVIEW_GUIDE.md).
 
 This report covers the work held in this repository. It draws only on the saved inference records,
 evaluation outputs and human-review files cited in the final section. All findings are **preliminary and
-image-specific**: they come from 40 model trials (two model families × two drone images × 10 trials), plus one
-deterministic output from each of two DeepForest configurations on the same two images, with one completed human
-reference.
+image-specific**. They come from:
+* 40 vision-language-model trials: two models × two drone images × 10 independent trials;
+* one deterministic output from each of two DeepForest configurations on the same two images. Each output was
+  reproduced bit-identically in 11 further executions (1 verification run + 10 repeated runs). These are
+  repeated executions, not additional observations;
+* one human reference: 11 annotated image boxes on PT-R1.
 
 **Image approval.** On 5 November 2026 the project lead personally reviewed both pilot images, `LA_PT-R1_27m` and
 `LA_PT-02_64m`, and **approved them for the cross-model benchmark** as the closest achievable site-focused images.
@@ -36,8 +43,9 @@ The outputs are then analysed offline in four separate ways, which answer four d
 * **PT-R1** at 26.8 m;
 * **PT-02** at 64.3 m.
 
-All 20 trials succeeded, for a total API cost of **$0.92**. For PT-R1, a human annotator outlined 11 trees, and
-that reference was approved as complete. It is the only image with a completed reference.
+All 20 trials succeeded, for a total API cost of **$0.92**. For PT-R1, one human annotator drew 11 tree bounding
+boxes on the image (H01–H11), and that reference was approved as complete. It is the only image with a reference.
+The boxes are image annotations, not field-validated tree positions (section D, "The PT-R1 human reference").
 
 The second model, M09 (OpenAI GPT-6.1 Sol at high reasoning effort), was then run 10 times on **each of the same
 two images**. It received byte-identical image input and the identical prompt, and all 20 trials succeeded for
@@ -93,18 +101,32 @@ two images**. It received byte-identical image input and the identical prompt, a
     resolution here. It is not a general ranking against the LLMs, which also saw a different (2212 × 1659)
     version of each image.
 
-**State of the study today.**
-* **Repeatability and cross-model agreement** are complete for both pilot images with M08 and M09.
-* **Human-reference accuracy** is complete for PT-R1 only, for both models.
+* **DeepForest is computationally reproducible, which is not the same as accurate (9 November 2026).**
+  * **Repeated runs:** each of the four DeepForest configuration/image combinations was executed 10 more times,
+    each run a fresh process.
+  * **Result:** all 40 runs produced byte-identical prediction files, the same detection counts (4,836, 6,320, 20
+    and 183), and pairwise agreement of 1.000 at IoU 0.50, 0.75 and 1.00. All were identical to the pilot runs.
+  * **Meaning:** reproducibility is verified on one machine and software stack. It says nothing about accuracy:
+    M01 reproduces 4,836 boxes exactly, none of which matches a reference tree. The repeats are one observation,
+    not ten.
+
+**State of the study (final).**
+* **Complete:** M08 and M09 (10 independent trials per image each), and DeepForest M01 and M02v2 (one
+  deterministic output per image, reproduced in 12 executions), on both approved images. This includes counts,
+  within-model consistency, cross-model box and coverage agreement, geometry, and PT-R1 reference accuracy.
 * **Approved images:** Dr. Elizabeth Ondula advised prioritizing imagery focused on the study site over imagery
   with substantial surrounding areas. The project lead has reviewed both pilot images and approved them as the
   closest achievable site-focused images. They are used unchanged, with no boundary mask or crop, for all
   matched-image comparisons.
-* **DeepForest M01 and M02 v2** are complete on both approved images: one verified deterministic output per
-  configuration, compared with every M08 and M09 trial, and with the PT-R1 reference.
-* **Not yet done:**
-  * comparisons across altitudes have a written design only;
-  * the 20-image weekly collection is catalogued but not benchmarked.
+* **Discontinued:** M10 Gemini. Gemini was optional, and Google AI Studio required a $30 minimum initial payment.
+* **Outside this paper, by decision:**
+  * a second annotator;
+  * the September tagged-tree field inventory and its individual-tree observations;
+  * GIS-derived heights (DSM, DTM, CHM);
+  * further inference or imagery;
+  * the altitude series and the weekly collection.
+
+  These may support later work.
 
 ---
 
@@ -323,15 +345,30 @@ does not match C) are flagged as ambiguous rather than merged.
 * **Semantic review:** a human reviewer first labelled the recurring PT-R1 locations as **TREE** (6), **NON_TREE**
   (1) or **UNCERTAIN** (2) (`human_review/manual_review.csv`). Both UNCERTAIN units were later identified as
   misplaced trial-6 boxes on trees that other units already cover.
-* **Independent reference:** the same person then annotated the image independently in Make Sense, outlining
-  **11 trees** (H01–H11). The VOC export is authoritative.
+* **Reference boxes:** the same person then drew **11 tree bounding boxes** (H01–H11) on the benchmark image in
+  Make Sense. The VOC export is authoritative. This annotation came **after** the 10 M08 PT-R1 trials and the
+  review of their detections. On 30 October 2026, local time:
+  * M08 trials: 16:27;
+  * review labels: 17:36–17:52;
+  * Make Sense exports: 18:05;
+  * reference committed: 18:31.
+
+  It is therefore not blind to M08's output. M09 (4 November) and DeepForest (5 November) ran after the reference
+  was frozen.
 * **Import checks:** the import compared the Pascal VOC and CSV exports. Five boxes differed by exactly one
   pixel on one edge, apparently from rounding. This was recorded, and the VOC coordinates were used unchanged.
 * **Approval:** the reference was approved as **complete** on 30 October 2026
   (`human_review/reference_status.csv`).
 
-The annotator found 11 trees in the image, the same number as the PT-R1 site inventory. Whether these are the
-same 11 trees has not been formally recorded.
+**What the reference is, and is not.** The 11 boxes are human-annotated image reference boxes from one annotator.
+Their number equals the PT-R1 site inventory count (11). However, the repository does not trace any box to an
+inventoried tree: there are no tree IDs, stem positions or species. They are therefore described as **11
+human-annotated image-reference boxes**, not 11 field-validated trees. All 11 are used in every accuracy
+calculation. The September field inventory is not used in this paper.
+
+The per-row notes in `human_review/reference_boxes.csv` still read "draft, completeness not yet approved". They
+were written at import, before approval. Approval is recorded in `human_review/reference_status.csv` (COMPLETE,
+30 October 2026). The annotation file is frozen and was not edited.
 
 ### Human-reference accuracy (PT-R1 only)
 
@@ -343,8 +380,9 @@ Each trial is matched to the 11 reference boxes on its own, with the same one-to
 | ≥ 0.75 | 0.148 ± 0.052 (0–0.167) | 0.082 ± 0.029 (0–0.091) | 0.105 ± 0.037 (0–0.118) | 0.9 / 5.2 / 10.1 | 0.800 |
 | = 1.00 | 0 | 0 | 0 | 0 / 6.1 / 11.0 | — |
 
-*Mean ± SD (n−1) across 10 trials, with the range in brackets. Pooling all trials gives the same precision,
-recall and F1. Source: `evaluation_results/accuracy_summary.csv`, `accuracy_vs_reference.csv`,
+*Mean ± SD (n−1) across 10 trials, with the range in brackets. The per-trial mean is the primary summary. Pooling
+TP, FP and FN over all trials gives slightly different values (precision 0.787, recall 0.436, F1 0.561 at
+IoU ≥ 0.50).* Source: `evaluation_results/accuracy_summary.csv`, `accuracy_vs_reference.csv`,
 `accuracy_report.md`.*
 
 At IoU ≥ 0.50, by trial:
@@ -525,6 +563,46 @@ near-duplicates, with an overlap ratio of 1.40.
 `prediction_outcomes.csv`, `cross_model_agreement.csv`, `cross_model_coverage.csv`, `geometry_summary.csv`,
 `evaluation_report.md`, `accuracy_report.md`); per-run provenance in `benchmark_results/*_m01_v1/` and
 `*_m02_v2/`.*
+
+### DeepForest repeated executions (9 November 2026)
+
+**Design.** M01 and M02v2 were each executed 10 times on both images: 40 runs, `lowalt_repro_v1`.
+* Each run was a fresh process with the pinned checkpoint, hash- and tensor-verified per run.
+* Runs were interleaved across the four combinations, all between 22:38 and 22:50 UTC.
+* The configuration IDs were required to equal the pilot's.
+* The 276 output files were mirrored from WSL to Windows and verified by SHA-256.
+* The analysis (`evaluate_deepforest_repeatability.py`) compares, separately:
+  * raw prediction files, in DeepForest's own order;
+  * canonical detection files;
+  * exact boxes and scores;
+  * counts;
+  * pairwise exact-IoU agreement for all 45 run pairs per combination.
+
+**Results** (from `evaluation_results_deepforest_repro_v1/repro_summary.csv`, re-verified from the archived files):
+
+| Configuration | Image | Runs | Detections per run | Distinct prediction-file hashes | Agreement at 0.50 / 0.75 / 1.00 (45 pairs) | Same as pilot runs |
+|---|---|---|---|---|---|---|
+| M01 | PT-R1 | 10 | 4,836 | 1 | 1.000 / 1.000 / 1.000 | yes |
+| M01 | PT-02 | 10 | 6,320 | 1 | 1.000 / 1.000 / 1.000 | yes |
+| M02v2 | PT-R1 | 10 | 20 | 1 | 1.000 / 1.000 / 1.000 | yes |
+| M02v2 | PT-02 | 10 | 183 | 1 | 1.000 / 1.000 / 1.000 | yes |
+
+* **Discrepancies:** none, including no difference in output order.
+* **Environment:** one GPU (NVIDIA RTX 5070 Laptop), torch 2.14.0 with CUDA 13.0, cuDNN 92400, DeepForest 2.1.0.
+  cuDNN deterministic mode was off, as in the pilot.
+* **Pilot runs:** with the primary and verification runs, each configuration produced the same output in 12
+  executions.
+* **Interpretation:**
+  * This verifies **computational reproducibility** in this environment.
+  * It is **one** observation per configuration and image, not ten. It must not be pooled with, or compared as a
+    sample size against, the LLMs' 10 independent stochastic trials.
+  * It says nothing about accuracy (section D, DeepForest above).
+
+Code, run metadata and archive checksums are in [deepforest_pipeline/](deepforest_pipeline/README.md). Figures:
+* `evaluation_results_deepforest_repro_v1/figures/P_counts_by_run.png`;
+* `Q_pairwise_agreement_iou050.png`;
+* `Q_pairwise_agreement_iou100.png`;
+* `R_repeatability_vs_llm.png`.
 
 ## E. Key Scientific Findings
 
@@ -754,6 +832,18 @@ The 10 cm/px setting was chosen for alignment, not tuned, and was not adjusted a
 (including the historical 7.89 cm/px) remain untested. Note also that the M02 v2 target depends on a nominal GSD
 that ignores canopy height.
 
+### 10. Perfect reproducibility and poor accuracy can coexist
+
+Every DeepForest configuration reproduced its output exactly in 12 executions. On PT-R1 the four configurations
+nevertheless range from F1 0.000 (M01) to 0.575 (M09) against the same reference. The LLMs, which are not
+reproducible run to run, are the more accurate here at IoU ≥ 0.50. Three properties must therefore be reported
+separately:
+* reproducibility (identical outputs on re-execution);
+* repeatability of a stochastic model (agreement between independent trials);
+* correctness against a reference.
+
+None of them implies the others.
+
 ---
 
 ## F. Methodological Limitations
@@ -766,9 +856,16 @@ that ignores canopy height.
   * **Consequences:** detections and disagreements in these margins count in every metric, for every model
     alike. Image-level results are therefore not site-level quantities, and the site inventories remain context
     only.
-* **One completed human reference.** Every accuracy number comes from one image with 11 trees. It does not extend
-  to PT-02, other altitudes, other dates or other models. **PT-02 currently supports repeatability analysis only,
-  not validated individual-tree detection accuracy.**
+* **One human image reference.** Every accuracy number comes from one image with 11 human-annotated
+  image-reference boxes (H01–H11).
+  * **One annotator,** with no agreement check against a second annotator. None will be added for this paper.
+  * **Not blind to M08:** the boxes were drawn after the 10 M08 trials and the review of their detections, so
+    their selection or extent may be influenced by M08's output. That could favour M08's box convention, or
+    sharpen the contrast with it. M09 and DeepForest ran after the reference was frozen.
+  * **Not traced to the field inventory:** the boxes are not linked tree by tree to the September field
+    inventory, which is not used in this paper.
+  * **No PT-02 reference:** PT-02 supports counts, consistency, geometry and cross-model agreement only. It gives
+    no detection accuracy.
 * **Small sample.** Forty paid trials: two models × two images × 10 trials. The trial-to-trial spread estimates *run-to-run* variation
   for one fixed input. It is not *image-to-image* or *site-to-site* variation, and it is not an independent
   estimate of accuracy: all ten trials share the same input, prompt and downscaling, and so share their errors.
@@ -780,9 +877,10 @@ that ignores canopy height.
   resolution, which may matter most for small crowns (finding 4).
 * **Site and altitude are confounded.** Each site was benchmarked at one altitude, and the two altitudes do not
   overlap (PT-R1 at 27–31 m, PT-02 at 64–86 m). This design cannot separate site effects from altitude effects.
-* **Annotation conventions and uncertainty.** The reference is a single annotator's single pass, with no
-  agreement check against a second annotator. How much of an irregular crown to include is a judgement, and it
-  drives the results at IoU ≥ 0.75 (finding 5).
+* **Annotation conventions and uncertainty.** The reference is a single annotator's single pass. How much of an
+  irregular crown to include is a judgement, and it drives the results at IoU ≥ 0.75 (finding 5). This is why
+  IoU ≥ 0.50 is the primary threshold and 0.75 a sensitivity check. IoU = 1.00 is effectively unreachable: the
+  LLMs' 0–1000 coordinate grid is about 8 px coarse on these images.
 * **Comparison against site-level inventories.** Inventory counts describe a whole site. Image coverage of each
   site is unconfirmed (`coverage_scope = UNKNOWN`), so inventory comparisons are context, never image-level
   ground truth. The pipeline never uses them to filter or correct predictions.
@@ -805,6 +903,17 @@ that ignores canopy height.
     coordinate-preserving step, but at this scale the whole image is a single window.
   * **No tuning or retraining:** no score-threshold tuning, fine-tuning or crown-size filtering was done, so
     results describe the released checkpoint at its historical settings.
+  * **Reproducibility scope:** bit-identical outputs were verified on one GPU and software stack only (section D,
+    repeated executions). Other hardware or library versions may give different floating-point results.
+  * **Raw outputs outside Git:** the full DeepForest output folders (338 files, about 940 MB) are kept in the
+    WSL working copy and its OneDrive mirror, not in this repository. Their checksums, run records and code are in
+    `deepforest_pipeline/`. All accuracy, consistency and cross-model metrics can be recomputed from files in this
+    repository. The reproducibility tables are stored here, but recomputing them needs the external archive.
+    Re-running inference also needs the GPU environment and the model weights.
+* **Out of scope.** The September tagged-tree field inventory, GIS-derived canopy heights (DSM, DTM, CHM) and any
+  further inference or imagery are excluded from this paper by decision. The paper is a methodological evaluation
+  of four existing configurations on two fixed images. It is not a tree inventory or a model-training study, and
+  it supports no conclusion about performance in other urban environments.
 * **Comparability across providers is approximate.**
   * Both models receive identical image bytes, prompt and schema.
   * "High" reasoning effort is a provider-specific setting, not equal computation.
@@ -936,82 +1045,53 @@ including those the PT-R1 labels were made from, remain in Git.
 
 ---
 
-## H. Current Research Status
+## H. Final Research Status (9 November 2026)
 
 | Status | Item |
 |---|---|
 | **Completed** | Frozen M08 configuration and v2 preprocessing; reproducible runner with spending ledger |
-| **Completed** | 10 trials each on `LA_PT-R1_27m` and `LA_PT-02_64m`; count, spatial and persistence analysis for both |
-| **Completed** | PT-R1 semantic review (9 units) and complete 11-tree human reference; accuracy evaluation at 0.50, 0.75 and 1.00 |
-| **Completed** | Offline evaluation, visualization, review-validation and reference-import tooling with tests |
-| **In progress** | PT-02 human review (62 review units prepared, none labelled yet) |
-| **In progress** | Confirmation of `coverage_scope` for all images, and of the week 1 condition labels |
-| **Planned** | M08 runs on more images: the remaining altitude frames and the weekly before/after collection |
-| **Planned** | Human references beyond PT-R1 |
-| **Completed** | M09 (GPT-6.1 Sol): adapter, separate cost ledger and model-comparison tooling; 10 trials on each pilot image; consistency for both, accuracy for PT-R1, and the M08-vs-M09 comparison on both images (40 pilot trials in total) |
-| **Completed** | Pilot image suitability: `LA_PT-R1_27m` and `LA_PT-02_64m` reviewed and approved by the project lead as the closest achievable site-focused images (5 November 2026); decision closed |
-| **Completed** | DeepForest M01 (native) and M02 v2 (nominal 10 cm/px) on both pilot images: pinned checkpoint, bit-identical verification runs, import, PT-R1 accuracy and four-model comparison (5 November 2026; not yet committed) |
-| **Discontinued** | M10 Gemini (see the model roster) |
-| **Prepared, not run** | DeepForest repeated-execution experiment `lowalt_repro_v1`: 10 runs each of M01 and M02v2 (nominal 10 cm/px) on both pilot images, 40 runs, replacing M10 (approved by Dr. Elizabeth Ondula to conclude this phase). Runner, driver, analysis and figures are implemented and tested offline; inference awaits authorization. See `EVALUATION.md` and `urban-tree-vision-baselines/docs/lowalt_repro_v1_deepforest.md`. |
-| **Planned** | Local Qwen3-VL via Ollama after hardware checks, then a small held-out DeepForest/NEON-annotated shared-reference set (after the current phase concludes) |
-| **Planned** | Across-altitude robustness analysis (design written in `EVALUATION.md`; requires image registration) |
-| **Deferred** | Copilot (no programmatic endpoint) |
-| **Deferred** | Tiling or cropping to raise model input resolution (outside the frozen configuration) |
-| **Deferred** | Cross-image box comparison (refused by the code until a validated alignment exists) |
+| **Completed** | M08 (Claude Opus 5.5): 10 trials on each pilot image; count, spatial and persistence analysis |
+| **Completed** | M09 (GPT-6.1 Sol): 10 trials on each pilot image, same input bytes and prompt as M08; separate cost ledger |
+| **Completed** | DeepForest M01 (native) and M02v2 (nominal 10 cm/px): one deterministic output per image, pinned checkpoint, verification run, import and evaluation (5 November) |
+| **Completed** | DeepForest repeated executions `lowalt_repro_v1`: 40 runs (10 per configuration and image), all identical to each other and to the pilot (9 November); evaluation in `evaluation_results_deepforest_repro_v1/` |
+| **Completed** | PT-R1 semantic review (9 units) and the 11-box human image reference; accuracy at IoU 0.50 (primary), 0.75 and 1.00 for all four configurations |
+| **Completed** | Four-configuration comparison on both images: counts, within-model consistency, box agreement, coverage, geometry |
+| **Completed** | Pilot image suitability: both images approved by the project lead (5 November); decision closed |
+| **Completed** | DeepForest code, run metadata and archive checksums preserved in `deepforest_pipeline/` |
+| **Discontinued** | M10 Gemini: optional, and Google AI Studio required a $30 minimum initial payment. An offline-tested adapter was removed from the active code; it remains in Git history (`833c63e`–`cf2da02`). No request was made. |
+| **Not in this paper** (by decision) | Second annotator; the September tagged-tree field inventory; GIS-derived heights (DSM, DTM, CHM); further inference or imagery; PT-02 reference; altitude series; weekly collection; Copilot; Qwen3-VL; NEON reference set |
+
+The experimental phase is closed. The items "not in this paper" may support later work. They are not outstanding
+tasks for the present study.
 
 ---
 
-## I. Next Steps
+## I. Possible Later Work (outside the present paper)
 
-These are **recommendations**, not completed work. They are ordered by scientific value relative to cost. Items
-marked *offline* need no API spending.
+Recorded for future studies only. None is required for, or planned within, the present paper.
 
-1. **Localization diagnostics on PT-R1 (offline).** Finding 5 suggests that some of the drop in accuracy at
-   higher thresholds comes from how tightly each side draws boxes, not from detection itself. Report
-   centre-distance and containment measures alongside IoU, and plot accuracy over a range of IoU thresholds. Keep
-   0.50, 0.75 and 1.00 as the primary thresholds.
-2. **Measure annotation uncertainty on PT-R1 (low cost, human time only).** A second independent annotation, or a
-   repeat by the same annotator, would show how much of the IoU ≥ 0.75 gap is human variability. A short written
-   crown-extent convention would make future references consistent.
-3. **Label the 62 PT-02 review units.** This gives semantic correctness (tree vs non-tree) for PT-02's recurring
-   detections without first solving full crown delineation. It is a feasible step towards an accuracy reference.
-4. **Within-site altitude sensitivity at PT-R1 (paid; requires authorization).** Run M08 on the nadir frames with
-   the same heading (`LA_PT-R1_28m`, `_30m`, `_31m`). Each image needs either its own human reference, which is
-   feasible for about 11 trees, or a validated registration to the 27 m frame. At the observed cost of about
-   $0.034 per PT-R1 trial, 30 more trials would cost about $1, within the remaining budget. Holding the site
-   fixed removes the site–altitude confound for this narrow altitude range. Treat the rotated `_30m_angled` frame
-   as a separate heading test.
-5. **A defensible PT-02 reference.** Options include:
-   * crown annotation with an explicit rule for touching crowns and an "uncertain boundary" flag;
-   * a point-based (stem or crown-centre) reference from the field inventory, if georeferenced stem positions
-     exist;
-   * restricting the reference to a sub-area where crowns are separable.
-6. **Model-family comparison.** M08, M09 and DeepForest M01/M02 v2 are complete on both pilot images. The agreed
-   sequence continues with:
-   * ~~M10 Gemini~~: discontinued on 9 November 2026 (minimum $30 initial payment); not run. It is replaced by a
-     10-run DeepForest repeated-execution experiment (prepared; awaiting authorization), which tests whether the
-     deterministic configurations reproduce identical boxes. Those runs are repeated executions, not independent
-     observations;
-   * **local Qwen3-VL** through Ollama, after hardware checks;
-   * a small held-out **DeepForest/NEON-annotated** shared-reference set.
-
-   Each model should be evaluated with the same model-agnostic code. A deterministic model such as DeepForest
-   needs one verified run per configuration rather than ten.
-7. **Probe the shared misses (offline first).** Before any new paid runs:
-   * tabulate the five trees both models never find against their crown size in model-input pixels, contrast and
-     background;
-   * check whether a second annotator also marks them.
-
-   Only then consider designs that change scale, such as the altitude series or a separately documented tiling
-   variant.
-8. **Weekly collection.** After the week 1 labels and coverage are confirmed, the 20 weekly images at about 95 m
-   allow repeated-observation analysis over time, which is the core of the research question.
+* **Annotation uncertainty:** a second or repeated annotation of PT-R1, which would separate box-extent convention
+  from detection.
+* **PT-02 reference:** for example labelling the 62 prepared review units, or crown annotation with an explicit rule
+  for touching crowns.
+* **Field and GIS data:** linking image boxes to the September tagged-tree inventory, and using canopy-height
+  models to measure per-crown GSD.
+* **More images:** the PT-R1 altitude series, which would separate site from altitude, and the weekly
+  before/after collection.
+* **More models and scales:** other model families (for example local Qwen3-VL) and other DeepForest scales,
+  evaluated with the same model-agnostic code. A deterministic model needs one verified output per configuration.
 
 ---
 
 ## Where to Find the Evidence
 
 **Reports and documentation**
+- [REVIEW_GUIDE.md](REVIEW_GUIDE.md): five-minute guide for reviewers: design, main results, figures, limitations
+- [deepforest_pipeline/README.md](deepforest_pipeline/README.md): DeepForest code, run metadata, archive checksums
+- [evaluation_results_lowalt_v1_deepforest/](evaluation_results_lowalt_v1_deepforest/evaluation_report.md): the
+  four-configuration evaluation (counts, agreement, coverage, PT-R1 accuracy)
+- [evaluation_results_deepforest_repro_v1/repro_report.md](evaluation_results_deepforest_repro_v1/repro_report.md):
+  DeepForest repeated-execution reproducibility
 - [BENCHMARK.md](BENCHMARK.md): frozen configuration, preprocessing, runner, ledger and budget rules
 - [EVALUATION.md](EVALUATION.md): metric definitions, matching and grouping algorithms, human-review workflow,
   accuracy method, across-altitude design

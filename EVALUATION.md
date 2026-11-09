@@ -195,6 +195,23 @@ the same exact-IoU, one-to-one, maximum-cardinality matching as the consistency 
 `human_review/reference_boxes.csv` also produces `review/human_reference_<image>.jpg`, which shows the reference
 boxes only.
 
+**Conventions for the paper.**
+* **Threshold:** IoU ≥ 0.50 is the primary matching threshold, and IoU ≥ 0.75 a secondary sensitivity check. IoU
+  = 1.00 is reported but not interpreted (see below).
+* **Summary across trials:** for M08 and M09, the primary summary is the **mean of per-trial values** (with SD and
+  range across the 10 trials). The **pooled** values in `accuracy_summary.csv` (`pooled_over_trials`, which sums
+  TP, FP and FN over all trials) are secondary and differ slightly: for example, M09 precision at 0.50 is 0.850 as a
+  mean against 0.842 pooled. DeepForest has one output per image, so its mean and pooled values coincide.
+* **Duplicates:** matching is one-to-one, so a second box on an already-matched reference box is a false positive,
+  of type `reference_matched_by_other_detection`.
+* **Human labels:** the review labels in `manual_review.csv` annotate the outcome tables only. They never change
+  TP, FP or FN.
+
+**The PT-R1 reference.** It is 11 human-annotated image-reference boxes (H01–H11) drawn by one annotator on the
+benchmark image. They were drawn after the 10 M08 trials and the review of their detections. They are not traced
+tree by tree to any field inventory. They are not field-validated tree positions. PT-02 has no reference, so it
+gets no precision, recall or F1.
+
 Against human whole-pixel boxes, IoU = 1.00 is effectively unreachable: Claude's 0–1000 grid has a step of about
 8 px. At that threshold the evaluation reports exact coordinate agreement, which is not a measure of detection
 quality. The report also measures how much of each matched Claude box lies inside its human box. If one box
@@ -280,12 +297,25 @@ It contains every M08/M09 row of `evaluation_results/` unchanged (checked row by
 `altitude_series.csv`'s `model_outputs` column now also lists the DeepForest experiments) plus the DeepForest
 units.
 
-## Repeated DeepForest executions (lowalt_repro_v1; prepared, not yet run)
+## Repeated DeepForest executions (lowalt_repro_v1; completed 9 November 2026)
 
 `evaluate_deepforest_repeatability.py` (figures in `evaluation_plots_repro.py`) analyses 10 repeated executions of each
-DeepForest pilot configuration (M01 and M02v2 at a nominal 10 cm/px) on both pilot images. The runs are produced in
-`urban-tree-vision-baselines` (`docs/lowalt_repro_v1_deepforest.md`) and mirrored to Windows. They are **not**
-imported into `benchmark_results/`: identical deterministic repeats must not appear as independent trials.
+DeepForest pilot configuration (M01 and M02v2 at a nominal 10 cm/px) on both pilot images.
+* **Where the runs came from:** they were produced with the code preserved in `deepforest_pipeline/` (see its
+  README and `docs/lowalt_repro_v1_deepforest.md`) and mirrored to Windows.
+* **Not imported as trials:** they are **not** imported into `benchmark_results/`. Identical deterministic repeats
+  must not appear as independent trials.
+* **Where the raw outputs are:** outside Git. Their checksums are in
+  `deepforest_pipeline/provenance/checksums/`.
+
+**Result.** All 40 runs succeeded:
+* in each of the four combinations, the raw files, canonical detections, counts (4,836, 6,320, 20 and 183) and
+  annotated images were identical across the 10 runs;
+* pairwise agreement was 1.000 at 0.50, 0.75 and 1.00;
+* every run was identical to the pilot's primary and verification runs.
+
+That is computational reproducibility in one environment (`evaluation_results_deepforest_repro_v1/repro_report.md`),
+not accuracy.
 
 ```powershell
 python evaluate_deepforest_repeatability.py --runs-root ..\urban-tree-vision-baselines\outputs\lowalt_repro_v1 --output-dir evaluation_results_deepforest_repro_v1
@@ -321,7 +351,7 @@ saved outputs into these objects. Pixel boxes need no conversion; normalized box
 with that model's scale. Metrics, persistence, figures and review then work unchanged. Comparing two models on
 the **same** image uses the same `compare_sets` call. Comparing across images is refused (next section).
 
-## Across-altitude robustness: design (not yet run)
+## Across-altitude robustness: design (not part of the present paper; kept for later work)
 
 The October 24 series has five PT-02 images (64–86 m) and five PT-R1 images (27–31 m). So far only
 `LA_PT-R1_27m` and `LA_PT-02_64m` have model outputs. `evaluation_results/altitude_series.csv` lists each
