@@ -1,0 +1,13 @@
+model,model_name,experiment_id,image_id,iou_threshold,kind,n,pairs,agreement_mean,agreement_sd,count_mean,count_sd,count_cv
+M09,gpt-6.1-sol,lowalt_pilot_pt02_64m_m09_v1,LA_PT-02_64m,0.50,independent stochastic trials,10,45,0.793918,0.058653,41.8,3.675746,0.087937
+M09,gpt-6.1-sol,lowalt_pilot_pt02_64m_m09_v1,LA_PT-02_64m,0.75,independent stochastic trials,10,45,0.475309,0.063778,41.8,3.675746,0.087937
+M09,gpt-6.1-sol,lowalt_pilot_pt02_64m_m09_v1,LA_PT-02_64m,1.00,independent stochastic trials,10,45,0,0,41.8,3.675746,0.087937
+M08,claude-opus-5-5,lowalt_pilot_pt02_64m_v1,LA_PT-02_64m,0.50,independent stochastic trials,10,45,0.874818,0.049052,24.5,1.840894,0.075139
+M08,claude-opus-5-5,lowalt_pilot_pt02_64m_v1,LA_PT-02_64m,0.75,independent stochastic trials,10,45,0.721105,0.063793,24.5,1.840894,0.075139
+M08,claude-opus-5-5,lowalt_pilot_pt02_64m_v1,LA_PT-02_64m,1.00,independent stochastic trials,10,45,0.103013,0.064052,24.5,1.840894,0.075139
+M09,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,LA_PT-R1_27m,0.50,independent stochastic trials,10,45,0.83807,0.101273,5.7,0.674949,0.118412
+M09,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,LA_PT-R1_27m,0.75,independent stochastic trials,10,45,0.815511,0.097202,5.7,0.674949,0.118412
+M09,gpt-6.1-sol,lowalt_pilot_ptr1_27m_m09_v1,LA_PT-R1_27m,1.00,independent stochastic trials,10,45,0,0,5.7,0.674949,0.118412
+M08,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,LA_PT-R1_27m,0.50,independent stochastic trials,10,45,0.918519,0.133603,6.1,0.316228,0.051841
+M08,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,LA_PT-R1_27m,0.75,independent stochastic trials,10,45,0.88547,0.19926,6.1,0.316228,0.051841
+M08,claude-opus-5-5,lowalt_pilot_ptr1_27m_v1,LA_PT-R1_27m,1.00,independent stochastic trials,10,45,0.262963,0.30873,6.1,0.316228,0.051841
