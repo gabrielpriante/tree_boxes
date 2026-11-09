@@ -280,6 +280,39 @@ It contains every M08/M09 row of `evaluation_results/` unchanged (checked row by
 `altitude_series.csv`'s `model_outputs` column now also lists the DeepForest experiments) plus the DeepForest
 units.
 
+## Repeated DeepForest executions (lowalt_repro_v1; prepared, not yet run)
+
+`evaluate_deepforest_repeatability.py` (figures in `evaluation_plots_repro.py`) analyses 10 repeated executions of each
+DeepForest pilot configuration (M01 and M02v2 at a nominal 10 cm/px) on both pilot images. The runs are produced in
+`urban-tree-vision-baselines` (`docs/lowalt_repro_v1_deepforest.md`) and mirrored to Windows. They are **not**
+imported into `benchmark_results/`: identical deterministic repeats must not appear as independent trials.
+
+```powershell
+python evaluate_deepforest_repeatability.py --runs-root ..\urban-tree-vision-baselines\outputs\lowalt_repro_v1 --output-dir evaluation_results_deepforest_repro_v1
+```
+
+**Checks per configuration and image**
+* **Raw output files:** SHA-256 of `predictions_raw.csv` (DeepForest's own order). This is kept separate from the
+  SHA-256 of `detections.json` (canonical order) and from exact float equality of the canonically sorted boxes and
+  scores. Raw files that differ while the canonical detections match are reported as an order-only difference.
+* **Counts:** detections per run, with mean and SD.
+* **Pairwise agreement:** all 45 run pairs, using the same exact-IoU one-to-one matching at 0.50, 0.75 and 1.00.
+* **Differences:** for a non-identical pair, the count difference, unmatched boxes, and the largest coordinate and
+  score differences among boxes matched at 0.50.
+* **Integrity:** the source hash is checked against the manifest and the configuration id must be consistent. Each
+  run is cross-referenced with the pilot primary and verification runs.
+* **LLM context:** M08/M09 within-model agreement and count CV are read from the frozen `evaluation_results/` CSVs
+  and placed beside the DeepForest results. They are not recomputed and nothing in that folder changes.
+
+**Outputs:** `repro_runs.csv`, `repro_pairwise.csv`, `repro_summary.csv`, `llm_within_model_reference.csv`,
+`repro_report.md`, `evaluation_config.json`, and figures P (counts per run), Q (pairwise heatmaps at 0.50 and
+1.00) and R (deterministic repeats against stochastic LLM trials).
+
+**Matching at this scale.** Two 6,320-box outputs would need a 6,320 × 6,320 assignment matrix. Above 4 million box
+pairs, `match_boxes` therefore solves each connected component of the eligible-pair graph separately. This gives
+the same optimum, since no eligible pair crosses components; a test checks it against the dense path. Every
+earlier evaluation stayed below that size (largest 6,320 × 183), so its results come from the unchanged dense path.
+
 ## Adding other models
 
 `evaluation_core` only sees `DetectionSet` objects: boxes in original-image pixels, plus image id, SHA-256,
@@ -287,26 +320,6 @@ size and trial number. Adding DeepForest, ChatGPT or Gemini means writing one lo
 saved outputs into these objects. Pixel boxes need no conversion; normalized boxes use `box_from_normalized`
 with that model's scale. Metrics, persistence, figures and review then work unchanged. Comparing two models on
 the **same** image uses the same `compare_sets` call. Comparing across images is refused (next section).
-
-**M10 Gemini (prepared; no results yet).** M10 trials are written by `benchmark_runner.py` in exactly the M08/M09
-record format (0–1000 boxes, 10 independent trials per image), so the existing loader reads them with no change.
-After the live run, `python evaluate_consistency.py --output-dir evaluation_results_lowalt_v1_m10` evaluates all
-five configurations on each pilot image. That covers M01, M02 v2, M08, M09 and M10:
-* counts, plus mean/SD/CV for the stochastic models only;
-* within-model agreement and persistence for M08/M09/M10 (not applicable to the single DeepForest outputs);
-* between-model agreement for all 10 configuration pairs at 0.50/0.75/1.00:
-  * LLM vs LLM: 10 × 10 trial pairs;
-  * DeepForest vs LLM: 1 × 10;
-  * M01 vs M02 v2: 1 × 1;
-* geometry, coverage and overlap;
-* on PT-R1 only, accuracy and per-reference-tree detection frequency against the 11-tree reference (including H04).
-
-PT-02 gets no accuracy.
-
-The plotting code was prepared for five configurations: a six-colour palette (the first four colours unchanged, so
-existing figures are unaffected), figure L in a three-column grid when there are more than four configurations, and
-a wrapped K title. A five-configuration synthetic run is part of the tests. Use a new output folder so the M08/M09
-(`evaluation_results/`) and DeepForest (`evaluation_results_lowalt_v1_deepforest/`) evaluations stay as they are.
 
 ## Across-altitude robustness: design (not yet run)
 
